@@ -36,6 +36,7 @@ local COLORS = {
     orange = 0xFFAA00,
     red = 0xFF5555,
     cyan = 0x55FFFF,
+    blue = 0x55AAFF,
 }
 
 local STATUS_WIDTH = 15 -- fits "waiting for CPU"
@@ -107,13 +108,15 @@ local function pageCount(width, tableRows)
     return math.max(1, math.ceil(#rows / pageSize(width, tableRows)))
 end
 
+-- Returns a function that sets the text color (does nothing on a GPU without
+-- colors) and whether colors are available
 local function colorSetter()
     local colors = gpu.getDepth() > 1
     return function(name)
         if colors then
             gpu.setForeground(COLORS[name] or COLORS.white)
         end
-    end
+    end, colors
 end
 
 -- Number columns that fit next to a readable name. On narrow tables Batch is
@@ -217,9 +220,23 @@ local function drawHeader()
     gpu.set(1, 1, fit(headerLine(width, pageCount(width, tableRows)), width))
 end
 
+-- Column where the Stock value starts in a table row, or nil if Stock isn't shown
+local function stockColumn(nameWidth, columns)
+    local position = nameWidth
+    for _, column in ipairs(columns) do
+        position = position + 1
+        if column.key == "stock" then
+            return position, column.width
+        end
+        position = position + column.width
+    end
+    return nil
+end
+
 -- Draws one table of rows starting at column x
-local function drawSubTable(x, tableWidth, tableRows, pageRows, setColor)
+local function drawSubTable(x, tableWidth, tableRows, pageRows, setColor, colors)
     local nameWidth, columns = columnsFor(tableWidth)
+    local stockOffset, stockWidth = stockColumn(nameWidth, columns)
     local titles = {name = "Name", status = "Status"}
     for _, column in ipairs(columns) do
         titles[column.key] = column.title
@@ -231,6 +248,11 @@ local function drawSubTable(x, tableWidth, tableRows, pageRows, setColor)
         if row then
             setColor(row.color)
             gpu.set(x, 2 + i, fit(formatRow(nameWidth, columns, row), tableWidth))
+            -- A stock value that wasn't read this cycle is redrawn in gray
+            if row.stockFrozen and colors and stockOffset and stockOffset + stockWidth <= tableWidth then
+                setColor("gray")
+                gpu.set(x + stockOffset, 2 + i, fitRight(row.stock, stockWidth))
+            end
         else
             gpu.fill(x, 2 + i, tableWidth, 1, " ")
         end
@@ -239,7 +261,7 @@ end
 
 local function drawTable()
     local width, _, _, separatorY, tableRows = layout()
-    local setColor = colorSetter()
+    local setColor, colors = colorSetter()
     page = math.min(page, pageCount(width, tableRows))
 
     drawHeader()
@@ -259,7 +281,7 @@ local function drawTable()
             end
         end
         local x = 1 + (t - 1) * (tableWidth + #TABLE_GAP)
-        drawSubTable(x, tableWidth, tableRows, pageRows, setColor)
+        drawSubTable(x, tableWidth, tableRows, pageRows, setColor, colors)
         if t < tables then
             setColor("gray")
             for y = 2, 2 + tableRows do

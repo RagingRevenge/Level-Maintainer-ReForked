@@ -115,6 +115,8 @@ end
 local currentStatus = {} -- name -> what the entry is doing now (shown in the status table)
 local lastLogged = {} -- name -> the last status message logged for it
 local lastAmount = {} -- name -> last known amount in stock (entries with a threshold)
+local amountCycle = {} -- name -> the cycle in which lastAmount was read
+local cycleNumber = 0
 
 -- logRepeats shows everything that happens, every cycle, in the status table's Recent
 -- panel. The scrolling log (display = "log") always stays de-duplicated.
@@ -176,6 +178,7 @@ local function maintain(name, config, request)
         local success, answer, result, amount = try(request, name, config[1], config[2], config[3])
         if amount ~= nil then
             lastAmount[name] = amount
+            amountCycle[name] = cycleNumber
         end
         if result == "stocked" then
             skip(name, "stocked", answer)
@@ -229,7 +232,7 @@ local function formatAmount(n)
 end
 
 local STATUS_TEXT = {
-    crafting = {"crafting", "green"},
+    crafting = {"crafting", "blue"},
     requested = {"requested", "yellow"},
     stocked = {"stocked", "green"},
     nocpu = {"waiting for CPU", "orange"},
@@ -269,6 +272,8 @@ local function render(title)
         table.insert(rows, {
             name = entry.name,
             stock = formatAmount(lastAmount[entry.name]),
+            -- Not read this cycle (crafting, waiting to retry or for a CPU): shown in gray
+            stockFrozen = lastAmount[entry.name] ~= nil and amountCycle[entry.name] ~= cycleNumber,
             want = formatAmount(entry.config[1]),
             batch = formatAmount(entry.config[2]),
             status = look[1],
@@ -506,6 +511,7 @@ end
 local function run()
     while true do
         checkForEdits()
+        cycleNumber = cycleNumber + 1
         display.beginBatch()
 
         local ok

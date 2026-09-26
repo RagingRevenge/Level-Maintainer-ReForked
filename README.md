@@ -62,7 +62,7 @@ Phthalic Acid                11.97M   10.00M   3.00M  stocked
 E edit config  S edit settings  R reload  Q quit
 ```
 
-- **Stock** is shown for entries with a threshold (the maintainer only reads the stock when it has to compare it). Fluids are in mB.
+- **Stock** is shown for entries with a threshold (the maintainer only reads the stock when it has to compare it). Fluids are in mB. The stock isn't read while an entry is crafting, waiting to retry or waiting for a CPU; its last value is then shown in gray.
 - **Status** is one of: `stocked`, `crafting`, `requested`, `waiting for CPU`, `failed` (the Recent log says when it is retried), `not craftable`, `error`, or `waiting` before the entry's first check.
 - Rows that need attention (`failed`, `error`, `not craftable`) are listed first; the rest are alphabetical.
 - The header counts down to the next cycle.
