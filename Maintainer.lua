@@ -49,6 +49,7 @@ local function buildSettings(userSettings, cfg)
         reloadCheck = 0, -- live reload off; most players can't edit the file outside the game
         display = "table",
         showRecent = true,
+        layout = "fit",
     }
     for k, v in pairs(userSettings or {}) do
         s[k] = v
@@ -81,6 +82,7 @@ local function applySettings(cfg)
     ae2.configure(settings)
     setTimeOffset(settings.utcOffset)
     display.setShowRecent(settings.showRecent ~= false)
+    display.setLayout(settings.layout)
     updateDisplayMode()
 end
 

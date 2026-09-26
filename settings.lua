@@ -54,6 +54,15 @@ settings.display = "table"
 -- uses the whole screen (statuses, failures and errors still show in the table).
 settings.showRecent = true
 
+-- How the status table uses the screen:
+--   "fit"     - changes the screen resolution so the rows fill the screen with the
+--               largest text that fits (matched to the screen's shape, e.g. 2x2 or
+--               3x2 blocks). The old resolution comes back when the maintainer stops.
+--   "columns" - keeps the resolution and puts the rows in side-by-side tables when
+--               the screen is wide enough.
+--   "fixed"   - keeps the resolution, one table.
+settings.layout = "fit"
+
 -- Live reload: how often, in seconds, to check whether config.lua or settings.lua
 -- was saved while the maintainer runs, and reload them. Only useful if you can
 -- edit the files outside the game (singleplayer, or a server on your own PC),

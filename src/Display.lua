@@ -21,6 +21,13 @@ local footerShort = "" -- used when the full key help doesn't fit
 local showRecent = true -- false: no recent log panel, the table uses the whole screen
 local page = 1 -- which page of the table is shown when it has more rows than fit
 
+-- "fit": set the resolution so the rows fill the screen with text as large as possible
+-- "columns": keep the resolution and put the rows in side-by-side tables when there is room
+-- "fixed": keep the resolution, one table
+local layoutMode = "fit"
+local originalResolution = nil -- {width, height} before the maintainer changed it
+local screenRatio = nil -- resolution width per line of height that fills the screen exactly
+
 local COLORS = {
     white = 0xFFFFFF,
     gray = 0xAAAAAA,
@@ -30,6 +37,16 @@ local COLORS = {
     red = 0xFF5555,
     cyan = 0x55FFFF,
 }
+
+local STATUS_WIDTH = 15 -- fits "waiting for CPU"
+local MIN_NAME_WIDTH = 16
+local MAX_NAME_WIDTH = 50 -- so the numbers stay next to the names on wide screens
+local NUMBER_COLUMNS = {{title = "Stock", key = "stock", width = 8}, {title = "Want", key = "want", width = 8},
+    {title = "Batch", key = "batch", width = 7}}
+local ALL_COLUMNS_WIDTH = STATUS_WIDTH + 2 + 9 + 9 + 8 -- everything except the name
+local MIN_TABLE_WIDTH = 20 + ALL_COLUMNS_WIDTH -- narrowest side-by-side table ("columns")
+local MIN_SCREEN_WIDTH = 50 -- the short key help and a compact header fit
+local TABLE_GAP = " | "
 
 -- Pads or cuts text to exactly `width` characters (cut text ends with "~")
 local function fit(text, width)
@@ -53,18 +70,41 @@ local function fitRight(text, width)
     return string.rep(" ", width - length) .. text
 end
 
--- Screen areas: line 1 header, line 2 column titles, then the table rows, a
--- separator, the recent log lines, and the key help on the last line. Without the
--- recent panel the table rows go down to the key help line.
-local function layout()
-    local width, height = gpu.getResolution()
+-- Screen areas for a resolution: line 1 header, line 2 column titles, then the table
+-- rows, a separator, the recent log lines, and the key help on the last line. Without
+-- the recent panel the table rows go down to the key help line.
+-- Returns the number of log lines, the separator line (or nil) and the table rows.
+local function areas(height)
     if not showRecent then
-        return width, height, 0, nil, math.max(1, height - 3)
+        return 0, nil, math.max(1, height - 3)
     end
     local logLines = math.max(3, math.floor(height * 0.3))
     local separatorY = height - 1 - logLines
-    local tableRows = math.max(1, separatorY - 3)
+    return logLines, separatorY, math.max(1, separatorY - 3)
+end
+
+local function layout()
+    local width, height = gpu.getResolution()
+    local logLines, separatorY, tableRows = areas(height)
     return width, height, logLines, separatorY, tableRows
+end
+
+-- Number of side-by-side tables for a screen width
+local function tableCount(width)
+    if layoutMode ~= "columns" then
+        return 1
+    end
+    local count = math.floor((width + #TABLE_GAP) / (MIN_TABLE_WIDTH + #TABLE_GAP))
+    return math.max(1, math.min(count, #rows))
+end
+
+-- Rows that fit on one page
+local function pageSize(width, tableRows)
+    return tableRows * tableCount(width)
+end
+
+local function pageCount(width, tableRows)
+    return math.max(1, math.ceil(#rows / pageSize(width, tableRows)))
 end
 
 local function colorSetter()
@@ -76,22 +116,20 @@ local function colorSetter()
     end
 end
 
-local STATUS_WIDTH = 17 -- fits "failed, retry 45s"
-local MIN_NAME_WIDTH = 16
-
--- Number columns that fit next to a readable name. On narrow screens Batch is
+-- Number columns that fit next to a readable name. On narrow tables Batch is
 -- dropped first, then Want, then Stock. Returns the name width and the columns.
 local function columnsFor(width)
-    local columns = {{title = "Stock", key = "stock", width = 8}, {title = "Want", key = "want", width = 8},
-        {title = "Batch", key = "batch", width = 7}}
+    local columns = {}
+    for _, column in ipairs(NUMBER_COLUMNS) do
+        table.insert(columns, column)
+    end
     while true do
         local used = STATUS_WIDTH + 2
         for _, column in ipairs(columns) do
             used = used + column.width + 1
         end
         if width - used >= MIN_NAME_WIDTH or #columns == 0 then
-            -- Capped so the numbers stay next to the names on very wide screens
-            return math.max(8, math.min(50, width - used)), columns
+            return math.max(8, math.min(MAX_NAME_WIDTH, width - used)), columns
         end
         table.remove(columns)
     end
@@ -105,8 +143,41 @@ local function formatRow(nameWidth, columns, row)
     return line .. "  " .. row.status
 end
 
-local function pageCount(tableRows)
-    return math.max(1, math.ceil(#rows / tableRows))
+-- The resolution for layout "fit": the smallest one (so the largest text) that shows
+-- every row, in the shape of the screen so the text fills it edge to edge.
+local function fitResolution()
+    local maxWidth, maxHeight = gpu.maxResolution()
+    local ratio = screenRatio or (maxWidth / maxHeight)
+    local longest = MIN_NAME_WIDTH
+    for _, row in ipairs(rows) do
+        longest = math.max(longest, unicode.len(row.name))
+    end
+    local needWidth = math.max(MIN_SCREEN_WIDTH, math.min(longest, MAX_NAME_WIDTH) + ALL_COLUMNS_WIDTH)
+    for height = 5, maxHeight do
+        local _, _, tableRows = areas(height)
+        local width = math.min(maxWidth, math.floor(height * ratio))
+        if tableRows >= #rows and width >= needWidth then
+            return width, height
+        end
+    end
+    return maxWidth, maxHeight
+end
+
+local function setResolution(width, height)
+    local currentWidth, currentHeight = gpu.getResolution()
+    if width ~= currentWidth or height ~= currentHeight then
+        gpu.setResolution(width, height)
+    end
+end
+
+-- Puts the screen in the resolution the layout wants: fitted for "fit", the
+-- resolution from before the maintainer started for the others
+local function applyResolution()
+    if layoutMode == "fit" then
+        setResolution(fitResolution())
+    elseif originalResolution then
+        setResolution(originalResolution[1], originalResolution[2])
+    end
 end
 
 -- Joins the header parts to fit the width: first with smaller gaps, then by dropping
@@ -143,32 +214,57 @@ end
 local function drawHeader()
     local width, _, _, _, tableRows = layout()
     colorSetter()("cyan")
-    gpu.set(1, 1, fit(headerLine(width, pageCount(tableRows)), width))
+    gpu.set(1, 1, fit(headerLine(width, pageCount(width, tableRows)), width))
+end
+
+-- Draws one table of rows starting at column x
+local function drawSubTable(x, tableWidth, tableRows, pageRows, setColor)
+    local nameWidth, columns = columnsFor(tableWidth)
+    local titles = {name = "Name", status = "Status"}
+    for _, column in ipairs(columns) do
+        titles[column.key] = column.title
+    end
+    setColor("gray")
+    gpu.set(x, 2, fit(formatRow(nameWidth, columns, titles), tableWidth))
+    for i = 1, tableRows do
+        local row = pageRows[i]
+        if row then
+            setColor(row.color)
+            gpu.set(x, 2 + i, fit(formatRow(nameWidth, columns, row), tableWidth))
+        else
+            gpu.fill(x, 2 + i, tableWidth, 1, " ")
+        end
+    end
 end
 
 local function drawTable()
     local width, _, _, separatorY, tableRows = layout()
     local setColor = colorSetter()
-    local nameWidth, columns = columnsFor(width)
-    page = math.min(page, pageCount(tableRows))
+    page = math.min(page, pageCount(width, tableRows))
 
     drawHeader()
-    setColor("gray")
-    local titles = {name = "Name", status = "Status"}
-    for _, column in ipairs(columns) do
-        titles[column.key] = column.title
-    end
-    gpu.set(1, 2, fit(formatRow(nameWidth, columns, titles), width))
 
-    local first = (page - 1) * tableRows
-    for i = 1, tableRows do
-        local y = 2 + i
-        local row = rows[first + i]
-        if row then
-            setColor(row.color)
-            gpu.set(1, y, fit(formatRow(nameWidth, columns, row), width))
-        else
-            gpu.fill(1, y, width, 1, " ")
+    -- This page's rows, shared evenly between the side-by-side tables
+    local tables = tableCount(width)
+    local first = (page - 1) * pageSize(width, tableRows)
+    local onPage = math.min(#rows - first, pageSize(width, tableRows))
+    local perTable = math.max(1, math.ceil(onPage / tables))
+    local tableWidth = math.floor((width - (tables - 1) * #TABLE_GAP) / tables)
+    for t = 1, tables do
+        local pageRows = {}
+        for i = 1, perTable do
+            local index = (t - 1) * perTable + i
+            if index <= onPage then
+                pageRows[i] = rows[first + index]
+            end
+        end
+        local x = 1 + (t - 1) * (tableWidth + #TABLE_GAP)
+        drawSubTable(x, tableWidth, tableRows, pageRows, setColor)
+        if t < tables then
+            setColor("gray")
+            for y = 2, 2 + tableRows do
+                gpu.set(x + tableWidth, y, TABLE_GAP)
+            end
         end
     end
 
@@ -179,7 +275,7 @@ local function drawTable()
 end
 
 local function drawLog()
-    local width, height, logLines, separatorY = layout()
+    local width, height, logLines, separatorY, tableRows = layout()
     local setColor = colorSetter()
     local first = math.max(1, #Display.history - logLines + 1)
     for i = 0, logLines - 1 do
@@ -198,9 +294,8 @@ local function drawLog()
             gpu.fill(1, y, width, 1, " ")
         end
     end
-    local _, _, _, _, tableRows = layout()
     local keys, keysShort = footer, footerShort
-    if pageCount(tableRows) > 1 then
+    if pageCount(width, tableRows) > 1 then
         keys = keys .. "  PgUp/PgDn page"
         keysShort = keysShort .. "  PgUp/PgDn"
     end
@@ -214,6 +309,12 @@ end
 
 local failed = false -- the table broke once; stay with the scrolling log from then on
 
+local function restoreResolution()
+    if gpu and originalResolution then
+        setResolution(originalResolution[1], originalResolution[2])
+    end
+end
+
 -- Runs a drawing function. A problem while drawing must never stop the maintainer,
 -- so on an error the table is switched off and the log is printed normally instead.
 local function guarded(draw)
@@ -222,6 +323,7 @@ local function guarded(draw)
         failed = true
         active = false
         setLogHandler(nil)
+        pcall(restoreResolution)
         pcall(term.clear)
         pcall(term.setCursorBlink, true)
         print("WARNING: the status table failed (" .. tostring(err) .. "); showing a scrolling log instead.")
@@ -233,11 +335,25 @@ local function drawAll()
         return
     end
     guarded(function()
+        applyResolution()
         local width, height = gpu.getResolution()
         gpu.fill(1, 1, width, height, " ")
         drawTable()
         drawLog()
     end)
+end
+
+-- The shape of the screen, for layout "fit". OC draws text in the screen minus a
+-- 4.5/16 block border, with characters twice as tall as wide.
+local function measureScreen()
+    screenRatio = nil
+    local address = gpu.getScreen()
+    if address then
+        local ok, blocksWide, blocksHigh = pcall(component.invoke, address, "getAspectRatio")
+        if ok and blocksWide and blocksHigh then
+            screenRatio = 2 * (blocksWide - 4.5 / 16) / (blocksHigh - 4.5 / 16)
+        end
+    end
 end
 
 -- Takes over the screen. Returns false if there is no graphics card (or the table
@@ -249,19 +365,22 @@ function Display.start()
     gpu = component.gpu
     active = true
     suspended = false
+    originalResolution = {gpu.getResolution()}
+    pcall(measureScreen)
     term.setCursorBlink(false)
     setLogHandler(Display.addLog)
     drawAll()
     return active
 end
 
--- Gives the screen back to normal printing
+-- Gives the screen back to normal printing, in the resolution it had before
 function Display.stop()
     if not active then
         return
     end
     active = false
     setLogHandler(nil)
+    pcall(restoreResolution)
     term.clear()
     term.setCursorBlink(true)
 end
@@ -271,8 +390,8 @@ function Display.changePage(delta)
     if not active or suspended then
         return
     end
-    local _, _, _, _, tableRows = layout()
-    local newPage = math.max(1, math.min(pageCount(tableRows), page + delta))
+    local width, _, _, _, tableRows = layout()
+    local newPage = math.max(1, math.min(pageCount(width, tableRows), page + delta))
     if newPage ~= page then
         page = newPage
         drawAll()
@@ -303,19 +422,36 @@ function Display.setShowRecent(show)
     end
 end
 
+-- "fit", "columns" or "fixed" (anything else counts as "fit")
+function Display.setLayout(mode)
+    if mode ~= "columns" and mode ~= "fixed" then
+        mode = "fit"
+    end
+    if mode ~= layoutMode then
+        layoutMode = mode
+        page = 1
+        drawAll()
+    end
+end
+
 function Display.isActive()
     return active
 end
 
--- While another program uses the screen (e.g. edit), nothing is drawn
+-- While another program uses the screen (e.g. edit), nothing is drawn and the
+-- screen gets its normal resolution back
 function Display.suspend()
     suspended = true
+    if active then
+        pcall(restoreResolution)
+    end
 end
 
 function Display.resume()
     suspended = false
     if active then
         term.setCursorBlink(false) -- edit turns the blinking cursor back on when it exits
+        pcall(measureScreen)
     end
     drawAll()
 end
