@@ -19,9 +19,8 @@ function AE2.connect()
 end
 
 -- Lightweight cache for specific items only.
--- Values: a craftable userdata (hit), or `false` (negative lookup).
+-- Values: {craftable = userdata, stack = table} (hit), or `false` (negative lookup).
 local itemCache = {}
-local fluidNameCache = {} -- name -> fluid registry name, or false if the craftable has no fluid stack
 local cacheTimestamp = 0
 
 -- Overridden from settings.lua via AE2.configure()
@@ -57,28 +56,31 @@ local function isFluidStack(stack)
     return stack ~= nil and stack.damage == nil and stack.amount ~= nil
 end
 
--- Function to get or cache a specific craftable item
+-- Returns the craftable for a label and its output stack (cached), or nil if nothing
+-- with that label can be crafted.
 local function getCraftableForItem(itemName)
     local currentTime = computer.uptime() -- real seconds; os.time() is in-game time (72x faster)
 
     local cached = itemCache[itemName]
     if cached ~= nil and currentTime - cacheTimestamp < cacheDuration then
         if cached == false then return nil end
-        return cached
+        return cached.craftable, cached.stack
     end
 
     -- If cache is too old, clear it completely to save memory
     if currentTime - cacheTimestamp >= cacheDuration then
         itemCache = {}
-        fluidNameCache = {}
         cacheTimestamp = currentTime
     end
 
     -- Look for this specific item in craftables
     local craftables = ME.getCraftables({["label"] = itemName})
     if #craftables >= 1 then
-        itemCache[itemName] = craftables[1] -- Cache only this one item
-        return craftables[1]
+        local craftable = craftables[1]
+        -- The output stack doesn't change, so it is cached too (saves a call per entry per cycle)
+        local stack = (craftable.getStack or craftable.getItemStack)(craftable)
+        itemCache[itemName] = {craftable = craftable, stack = stack}
+        return craftable, stack
     end
 
     itemCache[itemName] = false -- Cache the negative lookup so misspelled entries don't re-query every cycle
@@ -86,10 +88,9 @@ local function getCraftableForItem(itemName)
 end
 
 function AE2.requestItem(name, threshold, count, fluidName)
-    local craftable = getCraftableForItem(name)
+    local craftable, item = getCraftableForItem(name)
 
     if craftable then
-        local item = (craftable.getStack or craftable.getItemStack)(craftable)
         -- A fluid listed under cfg.items: check its stock as a fluid, not as an item
         if isFluidStack(item) then
             return AE2.requestFluid(name, threshold, count)
@@ -135,22 +136,16 @@ end
 -- `name` is the fluid craftable label; `fluidName` is the fluid registry name and is
 -- auto-detected from the craftable's stack if omitted (pass it only as an override).
 function AE2.requestFluid(name, threshold, count, fluidName)
-    local craftable = getCraftableForItem(name)
+    local craftable, stack = getCraftableForItem(name)
 
     if craftable then
         if threshold ~= nil then
             if not fluidName then
-                local cached = fluidNameCache[name]
-                if cached == nil then
-                    local stack = (craftable.getStack or craftable.getItemStack)(craftable)
-                    cached = (isFluidStack(stack) and stack.name) or false
-                    fluidNameCache[name] = cached
-                end
                 -- An item listed under cfg.fluids: check its stock as an item
-                if not cached then
+                if not isFluidStack(stack) then
                     return AE2.requestItem(name, threshold, count)
                 end
-                fluidName = cached
+                fluidName = stack.name
             end
 
             if fluidName and ME.getFluidInNetwork then
@@ -180,11 +175,13 @@ function AE2.checkIfCrafting()
     local freeCpus = 0
     local cpuBusy = {}
     for k, v in pairs(cpus) do
-        local finaloutput = v.cpu.finalOutput()
-        if finaloutput ~= nil then
-            items[finaloutput.label] = true
-        end
-        if not v.busy then
+        -- Only a busy CPU has a job to report (saves a call per idle CPU per cycle)
+        if v.busy then
+            local finaloutput = v.cpu.finalOutput()
+            if finaloutput ~= nil then
+                items[finaloutput.label] = true
+            end
+        else
             freeCpus = freeCpus + 1
         end
         -- First CPU with a given name wins, matching how request() picks by name
@@ -206,7 +203,6 @@ function AE2.clearCache()
     -- Re-resolve the interface in case the adapter/interface was replaced
     resolveInterface()
     itemCache = {}
-    fluidNameCache = {}
     cacheTimestamp = 0
 end
 

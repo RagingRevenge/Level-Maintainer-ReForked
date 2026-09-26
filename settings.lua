@@ -1,7 +1,8 @@
 local settings = {}
 
 -- Maintainer behaviour. The list of maintained items lives in config.lua.
--- Changes are picked up automatically a few seconds after saving; no restart needed.
+-- Changes take effect the next time Maintainer starts (no reboot needed), or
+-- while it runs if live reload (reloadCheck, at the bottom) is on.
 
 -- Seconds to wait between cycles. Each cycle checks every configured entry once.
 settings.sleep = 10
@@ -22,8 +23,9 @@ settings.requireFreeCpu = true
 -- e.g. "Maintainer". nil = let AE2 pick any CPU.
 settings.cpuName = nil
 
--- How long craftable lookups are cached, in seconds. Newly added patterns
--- (and fixed typos in config.lua) are picked up after at most this long.
+-- How long craftable lookups are cached, in seconds. An entry that is not
+-- craftable yet is picked up after at most this long once its pattern is
+-- added in AE2 (or straight away when the maintainer is restarted).
 settings.cacheDuration = 600
 
 -- How often to check whether AE2 has finished calculating a request, in seconds.

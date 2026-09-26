@@ -55,8 +55,8 @@ While running, the maintainer recovers from problems by itself:
 - Any other unexpected error is logged, and the maintainer restarts after `retryDelay` seconds (at least 5).
 - If no ME interface is attached when it starts, it waits for one instead of exiting.
 - Server restarts and chunk unloads are fine: OpenComputers saves the running computer and resumes it.
-
-- At startup, a mistake in `config.lua` is reported and the maintainer waits for the file to be fixed instead of exiting. With live reload on, a mistake in a reloaded file is reported and the last working version stays in use.
+- A broken entry in `config.lua` (for example a missing batch size) is reported and skipped; the other entries keep running.
+- At startup, a mistake that stops `config.lua` from loading at all is reported and the maintainer waits for the file to be fixed instead of exiting. With live reload on, a mistake in a reloaded file is reported and the last working version stays in use.
 
 It only stops when you press Ctrl+Alt+C.
 
@@ -82,7 +82,7 @@ Each pulse turns the computer on if it is off; a running computer ignores it. Wi
 
 # Config
 
-You can change maintained items in `config.lua`. There are two blocks: `cfg.items` for regular items (and the legacy `ae2fc:fluid_drop` workaround) and `cfg.fluids` for native fluid maintenance on GTNH 2.9+.
+You can change maintained items in `config.lua`. There are two blocks, `cfg.items` and `cfg.fluids`. Items and fluids work in either one: the maintainer checks what each entry actually is and uses the right stock check. The simplest setup is to put everything in `cfg.items`.
 
 ## Items
 
@@ -105,7 +105,7 @@ cfg["fluids"] = {
 }
 ```
 
-Pattern: `["fluid_label"] = {threshold_mb, batch_mb[, fluid_registry_name]}`. The label is the fluid's display name as shown in the AE crafting terminal. The fluid registry name is auto-detected from the craftable's stack -- pass it as a third value only as an override if auto-detection ever resolves to the wrong fluid. Omit the block entirely on pre-2.9 setups.
+Pattern: `["fluid_label"] = {threshold_mb, batch_mb[, fluid_registry_name]}`. The label is the fluid's display name as shown in the AE crafting terminal. The fluid registry name is auto-detected from the craftable's stack -- pass it as a third value only as an override if auto-detection ever resolves to the wrong fluid. Omit the block entirely on pre-2.9 setups (the maintainer skips it with a warning there). Fluids can also go in `cfg.items` with the same values.
 
 ## Settings
 

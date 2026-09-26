@@ -2,7 +2,7 @@ local cfg = {}
 
 -- EXAMPLE --
 
--- [item_name] = {threshold, batch_size, fluid_name} -- fluid_name is REQUIRED for fluid drops
+-- [item_or_fluid_name] = {threshold, batch_size, fluid_name} -- fluid_name only for a threshold on fluid drops
 -- ["Osmium Dust"] = {nil, 64} -- regular item without threshold
 -- ["drop of Molten SpaceTime"] = {1000000, 1, "spacetime"} -- fluid drop with threshold and fluid name
 

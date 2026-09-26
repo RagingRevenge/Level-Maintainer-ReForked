@@ -2,7 +2,7 @@ local computer = require("computer")
 local filesystem = require("filesystem")
 local shell = require("shell")
 local ae2 = require("src.AE2")
-local util = require("src.Utility")
+require("src.Utility") -- defines logInfo and setTimeOffset
 
 -- config.lua and settings.lua are read with loadfile rather than require (which caches
 -- until reboot), and reloaded whenever they are saved. Found the same way require would.
@@ -171,7 +171,51 @@ local function maintain(name, config, request)
 end
 
 local function sameEntry(a, b)
+    if type(a) ~= "table" or type(b) ~= "table" then
+        return a == b
+    end
     return a[1] == b[1] and a[2] == b[2] and a[3] == b[3]
+end
+
+-- Returns nil if a config entry is usable, otherwise what is wrong with it
+local function entryProblem(name, conf)
+    if type(name) ~= "string" then
+        return "the name must be text in quotes, like [\"Osmium Dust\"] = {nil, 64}"
+    end
+    if type(conf) ~= "table" then
+        return "the value must look like {threshold, batch_size}"
+    end
+    if conf[1] ~= nil and type(conf[1]) ~= "number" then
+        return "the threshold must be a number or nil"
+    end
+    if type(conf[2]) ~= "number" or conf[2] < 1 then
+        return "the batch size must be a number of at least 1"
+    end
+    if conf[3] ~= nil and type(conf[3]) ~= "string" then
+        return "the third value (fluid name) must be text in quotes"
+    end
+    return nil
+end
+
+-- Returns the usable entries of a config block; broken ones are reported and skipped
+local function validEntries(block, blockName)
+    if block == nil then
+        return nil
+    end
+    if type(block) ~= "table" then
+        logInfo("ERROR: cfg." .. blockName .. " in config.lua must be a table; ignoring it.")
+        return {}
+    end
+    local valid = {}
+    for name, conf in pairs(block) do
+        local problem = entryProblem(name, conf)
+        if problem then
+            logInfo("ERROR: config.lua entry " .. tostring(name) .. " in cfg." .. blockName .. ": " .. problem .. ". Skipping it.")
+        else
+            valid[name] = conf
+        end
+    end
+    return valid
 end
 
 -- Counts added, changed and removed entries between two configs, and forgets the
@@ -203,8 +247,8 @@ local function describeChanges(old, new)
 end
 
 local function applyConfig(cfg)
-    items = cfg.items or {}
-    fluids = cfg.fluids
+    items = validEntries(cfg.items, "items") or {}
+    fluids = validEntries(cfg.fluids, "fluids")
     if fluids and next(fluids) ~= nil and not ae2.hasFluidSupport() then
         logInfo("WARNING: cfg.fluids is configured but the ME interface does not expose getFluidInNetwork (requires GTNH 2.9+). Fluid entries will be skipped.")
         fluids = nil
@@ -286,24 +330,24 @@ local function run()
         local ok
         ok, itemsCrafting, freeCpus, cpuBusy = pcall(ae2.checkIfCrafting)
         if not ok then
+            -- The network can't be read right now; requests would fail too, so wait for the next cycle
             logInfo("ERROR: " .. tostring(itemsCrafting))
             ae2.clearCache()
-            itemsCrafting, freeCpus, cpuBusy = {}, 0, {}
-        end
+        else
+            useNamedCpu = settings.cpuName ~= nil and cpuBusy[settings.cpuName] ~= nil
+            if settings.cpuName ~= nil and not useNamedCpu and not warnedCpuName then
+                logInfo("WARNING: no crafting CPU named '" .. settings.cpuName .. "' found, AE2 will use any CPU.")
+                warnedCpuName = true
+            end
 
-        useNamedCpu = settings.cpuName ~= nil and cpuBusy[settings.cpuName] ~= nil
-        if ok and settings.cpuName ~= nil and not useNamedCpu and not warnedCpuName then
-            logInfo("WARNING: no crafting CPU named '" .. settings.cpuName .. "' found, AE2 will use any CPU.")
-            warnedCpuName = true
-        end
+            for item, config in pairs(items) do
+                maintain(item, config, ae2.requestItem)
+            end
 
-        for item, config in pairs(items) do
-            maintain(item, config, ae2.requestItem)
-        end
-
-        if fluids then
-            for fluid, config in pairs(fluids) do
-                maintain(fluid, config, ae2.requestFluid)
+            if fluids then
+                for fluid, config in pairs(fluids) do
+                    maintain(fluid, config, ae2.requestFluid)
+                end
             end
         end
 
@@ -350,6 +394,9 @@ local function main()
     end
     applySettings(nil)
 
+    -- src.AE2 stays loaded between runs, so forget lookups from a previous run
+    -- (e.g. a pattern added in AE2 since then would still count as not craftable)
+    ae2.clearCache()
     waitForInterface()
     loadInitialConfig()
 

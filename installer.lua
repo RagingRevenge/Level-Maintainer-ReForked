@@ -3,33 +3,64 @@ local filesystem = require("filesystem")
 local component = require("component")
 local scripts = {"src/AE2.lua", "src/Utility.lua", "Maintainer.lua"}
 
-local paths = {"src", "lib"}
-
-local function exists(filename)
-    return filesystem.exists(shell.getWorkingDirectory() .. "/" .. filename)
-end
-
 local repo = "https://raw.githubusercontent.com/Willshaper/Level-Maintainer/";
 local branch = "master"
+local dir = shell.getWorkingDirectory()
 
-for i = 1, #paths do
-    if not filesystem.exists(shell.getWorkingDirectory() .. "/" .. paths[i]) then
-        filesystem.makeDirectory(shell.getWorkingDirectory() .. "/" .. paths[i]);
-    end
+local function path(filename)
+    return dir .. "/" .. filename
 end
 
-for i = 1, #scripts do
-    if exists(scripts[i]) then
-        filesystem.remove(shell.getWorkingDirectory() .. "/" .. scripts[i]);
-    end
-
-    shell.execute(string.format("wget %s%s/%s %s", repo, branch, scripts[i], scripts[i]));
+-- Files are downloaded to a temporary name first, and only put in place once every
+-- download worked: a failed download (no internet card, GitHub down) leaves the
+-- existing install untouched instead of a mix of old and new scripts.
+-- (wget leaves an empty file behind when a download fails.)
+local function temp(filename)
+    return path(filename .. ".download")
 end
 
+local function download(filename)
+    filesystem.remove(temp(filename))
+    shell.execute(string.format("wget -f %s%s/%s %s", repo, branch, filename, temp(filename)))
+    return filesystem.exists(temp(filename)) and filesystem.size(temp(filename)) > 0
+end
+
+if not filesystem.exists(path("src")) then
+    filesystem.makeDirectory(path("src"))
+end
+
+local wanted = {}
+for _, file in ipairs(scripts) do
+    table.insert(wanted, file)
+end
+-- config.lua and settings.lua are yours; only fetched when missing
 for _, file in ipairs({"config.lua", "settings.lua"}) do
-    if not exists(file) then
-        shell.execute(string.format("wget %s%s/%s %s", repo, branch, file, file));
+    if not filesystem.exists(path(file)) then
+        table.insert(wanted, file)
     end
+end
+
+local failed = {}
+for _, file in ipairs(wanted) do
+    if not download(file) then
+        table.insert(failed, file)
+    end
+end
+
+if #failed > 0 then
+    for _, file in ipairs(wanted) do
+        filesystem.remove(temp(file))
+    end
+    print()
+    print("Could not download: " .. table.concat(failed, ", "))
+    print("Nothing was changed. Check that the computer has an internet card and")
+    print("try again. Not rebooting.")
+    return
+end
+
+for _, file in ipairs(wanted) do
+    filesystem.remove(path(file))
+    filesystem.rename(temp(file), path(file))
 end
 
 local function ask(question)
