@@ -159,19 +159,38 @@ local function drawLog()
     setColor("white")
 end
 
+local failed = false -- the table broke once; stay with the scrolling log from then on
+
+-- Runs a drawing function. A problem while drawing must never stop the maintainer,
+-- so on an error the table is switched off and the log is printed normally instead.
+local function guarded(draw)
+    local ok, err = pcall(draw)
+    if not ok then
+        failed = true
+        active = false
+        setLogHandler(nil)
+        pcall(term.clear)
+        pcall(term.setCursorBlink, true)
+        print("WARNING: the status table failed (" .. tostring(err) .. "); showing a scrolling log instead.")
+    end
+end
+
 local function drawAll()
     if not active or suspended then
         return
     end
-    local width, height = gpu.getResolution()
-    gpu.fill(1, 1, width, height, " ")
-    drawTable()
-    drawLog()
+    guarded(function()
+        local width, height = gpu.getResolution()
+        gpu.fill(1, 1, width, height, " ")
+        drawTable()
+        drawLog()
+    end)
 end
 
--- Takes over the screen. Returns false if there is no graphics card.
+-- Takes over the screen. Returns false if there is no graphics card (or the table
+-- failed earlier), and the maintainer prints a scrolling log instead.
 function Display.start()
-    if not component.isAvailable("gpu") then
+    if failed or not component.isAvailable("gpu") then
         return false
     end
     gpu = component.gpu
@@ -180,7 +199,7 @@ function Display.start()
     term.setCursorBlink(false)
     setLogHandler(Display.addLog)
     drawAll()
-    return true
+    return active
 end
 
 -- Gives the screen back to normal printing
@@ -217,7 +236,7 @@ function Display.addLog(line)
         table.remove(Display.history, 1)
     end
     if active and not suspended and not batching then
-        drawLog()
+        guarded(drawLog)
     end
 end
 

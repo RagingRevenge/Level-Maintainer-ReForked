@@ -4,8 +4,35 @@ local component = require("component")
 local scripts = {"src/AE2.lua", "src/Display.lua", "src/Utility.lua", "Maintainer.lua"}
 
 local repo = "https://raw.githubusercontent.com/Willshaper/Level-Maintainer/";
+local api = "https://api.github.com/repos/Willshaper/Level-Maintainer/commits/";
 local branch = "master"
 local dir = shell.getWorkingDirectory()
+
+-- GitHub caches each file on a branch for up to 5 minutes, so right after an update
+-- some downloads could be old and others new. Downloading from the latest commit's
+-- id instead always gives one matching set. Returns nil if it can't be looked up.
+local function latestCommit()
+    local ok, sha = pcall(function()
+        local internet = require("internet")
+        local body = ""
+        for chunk in internet.request(api .. branch, nil, {["User-Agent"] = "Level-Maintainer installer"}) do
+            body = body .. chunk
+            if #body > 2048 then
+                break -- the commit id is at the start of the response
+            end
+        end
+        return body:match('"sha"%s*:%s*"(%x+)"')
+    end)
+    return ok and sha or nil
+end
+
+local ref = latestCommit()
+if ref then
+    print("Installing version " .. ref:sub(1, 7))
+else
+    ref = branch
+    print("Could not look up the latest version; downloading from " .. branch .. " (may be a few minutes behind).")
+end
 
 local function path(filename)
     return dir .. "/" .. filename
@@ -21,7 +48,7 @@ end
 
 local function download(filename)
     filesystem.remove(temp(filename))
-    shell.execute(string.format("wget -f %s%s/%s %s", repo, branch, filename, temp(filename)))
+    shell.execute(string.format("wget -f %s%s/%s %s", repo, ref, filename, temp(filename)))
     return filesystem.exists(temp(filename)) and filesystem.size(temp(filename)) > 0
 end
 

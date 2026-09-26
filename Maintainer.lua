@@ -59,12 +59,15 @@ local userSettings = nil -- last successfully loaded settings.lua
 local entries = {} -- {name, config, request} for every maintained entry, sorted by name
 local configTime, settingsTime = nil, nil -- last-modified times of the loaded files
 
+local warnedNoTable = false
+
 -- Switches between the status table and the scrolling log when settings.display changes
 local function updateDisplayMode()
     local wantTable = settings.display ~= "log"
     if wantTable and not display.isActive() then
-        if not display.start() then
-            logInfo("WARNING: no graphics card found, showing a scrolling log instead of the table.")
+        if not display.start() and not warnedNoTable then
+            logInfo("WARNING: the status table can't be shown (no graphics card, or it failed); showing a scrolling log.")
+            warnedNoTable = true
         end
     elseif not wantTable and display.isActive() then
         display.stop()
