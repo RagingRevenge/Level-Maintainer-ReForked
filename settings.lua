@@ -31,4 +31,8 @@ settings.pollInterval = 1
 -- their threshold, waiting to retry, or waiting for a free CPU.
 settings.logSkips = true
 
+-- Hours to add to UTC for log timestamps, e.g. 1 for CET, 2 for CEST,
+-- -5 for EST. Change it when daylight saving time starts or ends.
+settings.utcOffset = 0
+
 return settings

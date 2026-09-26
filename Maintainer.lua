@@ -12,6 +12,7 @@ local settings = {
     cacheDuration = 600,
     pollInterval = 1,
     logSkips = true,
+    utcOffset = 0,
 }
 local loaded, userSettings = pcall(require, "settings")
 if loaded and type(userSettings) == "table" then
@@ -22,6 +23,7 @@ else
     logInfo("WARNING: could not load settings.lua, using defaults (" .. tostring(userSettings) .. ")")
 end
 ae2.configure(settings)
+setTimeOffset(settings.utcOffset)
 
 local items = cfg.items
 local fluids = cfg.fluids
