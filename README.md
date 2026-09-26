@@ -51,6 +51,20 @@ cfg["fluids"] = {
 
 Pattern: `["fluid_label"] = {threshold_mb, batch_mb[, fluid_registry_name]}`. The label is the fluid's display name as shown in the AE crafting terminal. The fluid registry name is auto-detected from the craftable's stack -- pass it as a third value only as an override if auto-detection ever resolves to the wrong fluid. Omit the block entirely on pre-2.9 setups.
 
+## Settings
+
+Timing and behaviour live in `settings.lua` (anything missing falls back to a default):
+
+| Setting | Default | What it does |
+|---|---|---|
+| `sleep` | `10` | Seconds between cycles. |
+| `retryDelay` | `60` | Seconds to wait before recalculating an entry whose request failed (missing ingredients, no suitable CPU). `0` retries every cycle. |
+| `requireFreeCpu` | `true` | Only start a calculation when a crafting CPU (or `cpuName`) is idle. |
+| `cpuName` | `nil` | Send every request to this named crafting CPU. `nil` lets AE2 pick. |
+| `cacheDuration` | `600` | Seconds craftable lookups are cached. New patterns are picked up after at most this long. |
+| `pollInterval` | `1` | Seconds between checks while AE2 calculates a request. |
+| `logSkips` | `true` | Log entries skipped for being in progress, stocked, waiting to retry or waiting for a CPU. |
+
 **!! Threshold has a performance impact -- only add it when necessary, and preferably not on mainnet !!**
 
 Reboot after changing values.

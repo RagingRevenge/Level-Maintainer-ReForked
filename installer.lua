@@ -25,8 +25,10 @@ for i = 1, #scripts do
     shell.execute(string.format("wget %s%s/%s %s", repo, branch, scripts[i], scripts[i]));
 end
 
-if not exists("config.lua") then
-    shell.execute(string.format("wget %s%s/config.lua", repo, branch));
+for _, file in ipairs({"config.lua", "settings.lua"}) do
+    if not exists(file) then
+        shell.execute(string.format("wget %s%s/%s %s", repo, branch, file, file));
+    end
 end
 
 shell.execute("reboot");

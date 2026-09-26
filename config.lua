@@ -22,6 +22,6 @@ cfg["fluids"] = {
     -- ["Molten SpaceTime"] = {nil, 1000},
 }
 
-cfg["sleep"] = 10
+-- Timing, retry and CPU options are in settings.lua.
 
 return cfg
