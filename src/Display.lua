@@ -3,6 +3,7 @@
 -- is "table"; otherwise the maintainer prints a scrolling log.
 local component = require("component")
 local term = require("term")
+local unicode = require("unicode")
 
 local Display = {}
 
