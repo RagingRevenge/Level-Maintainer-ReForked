@@ -56,7 +56,9 @@ While running, the maintainer recovers from problems by itself:
 - If no ME interface is attached when it starts, it waits for one instead of exiting.
 - Server restarts and chunk unloads are fine: OpenComputers saves the running computer and resumes it.
 
-It still stops for a mistake in `config.lua` (fix the file and start it again) and when you press Ctrl+Alt+C.
+- A mistake in `config.lua` or `settings.lua` is reported and the last working version stays in use. At startup it waits for a broken `config.lua` to be fixed.
+
+It only stops when you press Ctrl+Alt+C.
 
 ## Start on boot
 
@@ -123,4 +125,17 @@ Timing and behaviour live in `settings.lua` (anything missing falls back to a de
 
 **!! Threshold has a performance impact -- only add it when necessary, and preferably not on mainnet !!**
 
-Reboot after changing values.
+## Changing the config while it runs
+
+No reboot is needed. `config.lua` and `settings.lua` are read fresh every time the maintainer starts, and re-read while it runs whenever they are saved:
+
+- **In game:** press Ctrl+Alt+C, `edit config.lua`, save with Ctrl+S, exit with Ctrl+W and run `Maintainer` again. (The maintainer uses the screen while it runs, so it has to be stopped to use `edit`.)
+- **From your PC, without stopping it** (singleplayer, or a server on your PC): edit the file in the world save, `saves/<world>/opencomputers/<drive address>/home/config.lua` (run `df` in OC to see the drive address). Within about 2 seconds the maintainer logs:
+
+  ```
+  Reloaded config.lua (1 added, 0 changed, 0 removed)
+  ```
+
+  and starts a new cycle with it.
+
+If a saved file has a mistake, the maintainer logs the error and keeps using the previous version until a fixed one is saved.

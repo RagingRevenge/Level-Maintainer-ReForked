@@ -1,7 +1,7 @@
 local settings = {}
 
 -- Maintainer behaviour. The list of maintained items lives in config.lua.
--- Reboot after changing values.
+-- Changes are picked up automatically a few seconds after saving; no restart needed.
 
 -- Seconds to wait between cycles. Each cycle checks every configured entry once.
 settings.sleep = 10
