@@ -7,10 +7,21 @@ Fork of [Echoloquate/Level-Maintainer](https://github.com/Echoloquate/Level-Main
 
 # Setup
 
-- Full block ME interface connected to an adapter
-- Crafting Monitors on your CPUs
-- (Internet card)
-- OC stuff to make a basic computer
+## Hardware
+
+- An OpenComputers computer: case, CPU, RAM, hard drive, EEPROM (Lua BIOS), GPU, screen and keyboard
+- An internet card (needed to download the scripts)
+- An adapter touching a full-block ME interface on your network
+- A Crafting Monitor on every crafting CPU (used to see what is already being crafted)
+
+## Install OpenOS
+
+The maintainer runs on OpenOS, so install it to the hard drive first:
+
+1. Get the OpenOS floppy. It is normally crafted from a blank floppy and the OpenComputers manual (check NEI for the recipe in your pack).
+2. Put the floppy in a disk drive next to the computer and turn it on.
+3. Run `install`, pick the hard drive and let it reboot.
+4. Remove the floppy. The computer now boots OpenOS from the hard drive.
 
 # Installation
 
