@@ -3,6 +3,8 @@
 Lets you passive lines easily, without lag and randomness of AE2 maintainer.
 Also supports having a threshold.
 
+Fork of [Echoloquate/Level-Maintainer](https://github.com/Echoloquate/Level-Maintainer) with fixes for the lookup cache, NBT item thresholds and crash recovery, plus a `settings.lua` for timing, retry and CPU options.
+
 # Setup
 
 - Full block ME interface connected to an adapter
@@ -12,13 +14,15 @@ Also supports having a threshold.
 
 # Installation
 
-Download it
+Download it (run the same command again later to update)
 
 ```bash
-wget raw.githubusercontent.com/Echoloquate/Level-Maintainer/master/installer.lua && installer
+wget -f https://raw.githubusercontent.com/Willshaper/Level-Maintainer/master/installer.lua && installer
 ```
 
-Run it
+The installer replaces the scripts but keeps an existing `config.lua` and `settings.lua`, then reboots.
+
+Run it from the folder you installed to
 
 ```bash
 Maintainer
