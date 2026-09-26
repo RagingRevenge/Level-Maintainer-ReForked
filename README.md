@@ -56,7 +56,7 @@ While running, the maintainer recovers from problems by itself:
 - If no ME interface is attached when it starts, it waits for one instead of exiting.
 - Server restarts and chunk unloads are fine: OpenComputers saves the running computer and resumes it.
 
-- A mistake in `config.lua` or `settings.lua` is reported and the last working version stays in use. At startup it waits for a broken `config.lua` to be fixed.
+- At startup, a mistake in `config.lua` is reported and the maintainer waits for the file to be fixed instead of exiting. With live reload on, a mistake in a reloaded file is reported and the last working version stays in use.
 
 It only stops when you press Ctrl+Alt+C.
 
@@ -121,21 +121,23 @@ Timing and behaviour live in `settings.lua` (anything missing falls back to a de
 | `pollInterval` | `1` | Seconds between checks while AE2 calculates a request. |
 | `logSkips` | `true` | Log entries skipped for being in progress, stocked, waiting to retry or waiting for a CPU. |
 | `logRepeats` | `false` | Repeat those messages every cycle. `false` logs each entry's status once and again only when it changes. |
+| `reloadCheck` | `0` | Live reload: seconds between checks for a saved `config.lua` or `settings.lua` while running, e.g. `30`. Only useful if you can edit the files outside the game. `0` = off. |
 | `utcOffset` | `0` | Hours added to UTC for log timestamps (e.g. `1` for CET, `2` for CEST). Timestamps use the server's real clock, not in-game time. |
 
 **!! Threshold has a performance impact -- only add it when necessary, and preferably not on mainnet !!**
 
 ## Changing the config while it runs
 
-No reboot is needed. `config.lua` and `settings.lua` are read fresh every time the maintainer starts, and re-read while it runs whenever they are saved:
+No reboot is needed: `config.lua` and `settings.lua` are read fresh every time the maintainer starts. Press Ctrl+Alt+C, `edit config.lua`, save with Ctrl+S, exit with Ctrl+W and run `Maintainer` again. (The maintainer uses the screen while it runs, so it has to be stopped to use `edit`.)
 
-- **In game:** press Ctrl+Alt+C, `edit config.lua`, save with Ctrl+S, exit with Ctrl+W and run `Maintainer` again. (The maintainer uses the screen while it runs, so it has to be stopped to use `edit`.)
-- **From your PC, without stopping it** (singleplayer, or a server on your PC): edit the file in the world save, `saves/<world>/opencomputers/<drive address>/home/config.lua` (run `df` in OC to see the drive address). Within about 2 seconds the maintainer logs:
+### Live reload (off by default)
 
-  ```
-  Reloaded config.lua (1 added, 0 changed, 0 removed)
-  ```
+If you can edit the files outside the game (singleplayer, or a server on your own PC), the maintainer can pick up changes without being stopped. Set `reloadCheck` in `settings.lua` to how often to check, e.g. `30` seconds, then edit the file in the world save: `saves/<world>/opencomputers/<drive address>/home/config.lua` (run `df` in OC to see the drive address). At the next check the maintainer logs
 
-  and starts a new cycle with it.
+```
+Reloaded config.lua (1 added, 0 changed, 0 removed)
+```
 
-If a saved file has a mistake, the maintainer logs the error and keeps using the previous version until a fixed one is saved.
+and starts a new cycle with it. If a saved file has a mistake, it logs the error and keeps using the previous version until a fixed one is saved.
+
+On a server you usually can't reach these files, so leave it off.

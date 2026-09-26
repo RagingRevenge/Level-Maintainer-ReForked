@@ -42,4 +42,11 @@ settings.logRepeats = false
 -- -5 for EST. Change it when daylight saving time starts or ends.
 settings.utcOffset = 0
 
+-- Live reload: how often, in seconds, to check whether config.lua or settings.lua
+-- was saved while the maintainer runs, and reload them. Only useful if you can
+-- edit the files outside the game (singleplayer, or a server on your own PC),
+-- since the maintainer has to be stopped to use edit in game. e.g. 30.
+-- 0 = off. The files are read fresh every time the maintainer starts either way.
+settings.reloadCheck = 0
+
 return settings

@@ -12,7 +12,7 @@ local function findFile(module)
 end
 local CONFIG_PATH = findFile("config")
 local SETTINGS_PATH = findFile("settings")
-local RELOAD_CHECK = 2 -- seconds between checks for edited files while waiting
+local STARTUP_CHECK = 2 -- seconds between checks while waiting for a broken config.lua to be fixed
 
 -- Runs a Lua file that returns a table. Returns the table, or nil and an error message.
 local function loadTable(path)
@@ -42,6 +42,7 @@ local function buildSettings(userSettings, cfg)
         logSkips = true,
         logRepeats = false,
         utcOffset = 0,
+        reloadCheck = 0, -- live reload off; most players can't edit the file outside the game
     }
     for k, v in pairs(userSettings or {}) do
         s[k] = v
@@ -248,13 +249,31 @@ local function reloadIfChanged()
     return reloaded
 end
 
--- Waits settings.sleep seconds, checking for edited files every few seconds.
--- An edit ends the wait early so the new config is used right away.
+local nextReloadCheck = 0 -- uptime of the next check for edited files
+
+-- Checks for edited files if settings.reloadCheck seconds have passed since the last
+-- check (0 turns live reload off). Returns true if anything was reloaded.
+local function checkForEdits()
+    local interval = tonumber(settings.reloadCheck) or 0
+    if interval <= 0 or computer.uptime() < nextReloadCheck then
+        return false
+    end
+    nextReloadCheck = computer.uptime() + interval
+    return reloadIfChanged()
+end
+
+-- Waits settings.sleep seconds. If a check for edited files falls due during the
+-- wait, it wakes up for it, and an edit ends the wait early so the new config is
+-- used right away.
 local function waitForNextCycle()
     local deadline = computer.uptime() + settings.sleep
     repeat
-        os.sleep(math.max(0, math.min(RELOAD_CHECK, deadline - computer.uptime())))
-        if reloadIfChanged() then
+        local wake = deadline
+        if (tonumber(settings.reloadCheck) or 0) > 0 then
+            wake = math.min(deadline, nextReloadCheck)
+        end
+        os.sleep(math.max(0, wake - computer.uptime()))
+        if checkForEdits() then
             return
         end
     until computer.uptime() >= deadline
@@ -262,7 +281,7 @@ end
 
 local function run()
     while true do
-        reloadIfChanged()
+        checkForEdits()
 
         local ok
         ok, itemsCrafting, freeCpus, cpuBusy = pcall(ae2.checkIfCrafting)
@@ -311,7 +330,7 @@ local function loadInitialConfig()
         logInfo("ERROR: config.lua has a mistake: " .. err)
         logInfo("Fix and save it; the maintainer starts as soon as it loads.")
         repeat
-            os.sleep(RELOAD_CHECK)
+            os.sleep(STARTUP_CHECK)
             if filesystem.lastModified(CONFIG_PATH) ~= configTime then
                 cfg, err = readConfig()
                 if not cfg then
