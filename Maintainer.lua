@@ -12,6 +12,7 @@ local settings = {
     cacheDuration = 600,
     pollInterval = 1,
     logSkips = true,
+    logRepeats = false,
     utcOffset = 0,
 }
 local loaded, userSettings = pcall(require, "settings")
@@ -44,9 +45,25 @@ local function try(fn, ...)
     return success, answer, result
 end
 
-local function skip(message)
+local lastStatus = {} -- name -> status of the last message logged for that entry
+
+-- Logs a status message for an entry. Unless logRepeats is on, the same status is
+-- only logged once, until the entry's status changes.
+local function logStatus(name, status, message)
+    local repeated = lastStatus[name] == status
+    lastStatus[name] = status
+    if repeated and not settings.logRepeats then
+        return
+    end
+    logInfo(message)
+end
+
+-- Skips (already crafting, stocked, waiting to retry, no CPU) are hidden entirely with logSkips = false
+local function skip(name, status, message)
     if settings.logSkips then
-        logInfo(message)
+        logStatus(name, status, message)
+    else
+        lastStatus[name] = status
     end
 end
 
@@ -70,22 +87,33 @@ end
 local function maintain(name, config, request)
     local now = computer.uptime()
     if itemsCrafting[name] == true then
-        skip(name .. " is already being crafted, skipping...")
+        skip(name, "crafting", name .. " is already being crafted, skipping...")
     elseif retryAt[name] and now < retryAt[name] then
-        skip(name .. " failed recently, retrying in " .. math.ceil(retryAt[name] - now) .. "s")
+        skip(name, "retry", name .. " failed recently, retrying in " .. math.ceil(retryAt[name] - now) .. "s")
     elseif not cpuAvailable() then
-        skip(name .. ": no free crafting CPU, skipping...")
+        skip(name, "nocpu", name .. ": no free crafting CPU, skipping...")
     else
         local success, answer, result = try(request, name, config[1], config[2], config[3])
         if result == "stocked" then
-            skip(answer)
+            skip(name, "stocked", answer)
+        elseif result == "missing" then
+            logStatus(name, "missing", answer)
+        elseif result == "failed" then
+            retryAt[name] = computer.uptime() + settings.retryDelay
+            if settings.retryDelay > 0 then
+                answer = answer .. ", retrying in " .. settings.retryDelay .. "s"
+            end
+            -- Logged every time; the retry wait that follows is covered by this message
+            logInfo(answer)
+            lastStatus[name] = "retry"
+        elseif result == "error" then
+            lastStatus[name] = "error" -- already logged by try()
         else
             logInfo(answer)
+            lastStatus[name] = result
         end
 
-        if result == "failed" then
-            retryAt[name] = computer.uptime() + settings.retryDelay
-        else
+        if result ~= "failed" then
             retryAt[name] = nil
         end
 

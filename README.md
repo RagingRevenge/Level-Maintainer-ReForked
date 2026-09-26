@@ -118,6 +118,7 @@ Timing and behaviour live in `settings.lua` (anything missing falls back to a de
 | `cacheDuration` | `600` | Seconds craftable lookups are cached. New patterns are picked up after at most this long. |
 | `pollInterval` | `1` | Seconds between checks while AE2 calculates a request. |
 | `logSkips` | `true` | Log entries skipped for being in progress, stocked, waiting to retry or waiting for a CPU. |
+| `logRepeats` | `false` | Repeat those messages every cycle. `false` logs each entry's status once and again only when it changes. |
 | `utcOffset` | `0` | Hours added to UTC for log timestamps (e.g. `1` for CET, `2` for CEST). Timestamps use the server's real clock, not in-game time. |
 
 **!! Threshold has a performance impact -- only add it when necessary, and preferably not on mainnet !!**
