@@ -64,7 +64,7 @@ E edit config  S edit settings  R reload  Q quit
 
 - **Stock** is shown for entries with a threshold (the maintainer only reads the stock when it has to compare it). Fluids are in mB.
 - **Status** is one of: `stocked`, `crafting`, `requested`, `waiting for CPU`, `failed, retry 45s`, `not craftable`, `error`, or `waiting` before the entry's first check.
-- With a color GPU the rows are colored by status. If there are more entries than rows, the last row says how many are hidden; a bigger screen shows more.
+- With a color GPU the rows are colored by status. If there are more entries than rows, the last row says how many are hidden; a bigger screen shows more, and `settings.showRecent = false` gives the table the whole screen.
 
 Set `settings.display = "log"` for the plain scrolling log instead.
 
@@ -153,6 +153,7 @@ Timing and behaviour live in `settings.lua` (anything missing falls back to a de
 | `pollInterval` | `1` | Seconds between checks while AE2 calculates a request. |
 | `logSkips` | `true` | Log entries skipped for being in progress, stocked, waiting to retry or waiting for a CPU. |
 | `display` | `"table"` | `"table"` shows the status table described under [Screen and keys](#screen-and-keys); `"log"` shows a scrolling log. |
+| `showRecent` | `true` | Show the recent log lines below the status table. `false` gives the whole screen to the table. |
 | `logRepeats` | `false` | Repeat those messages every cycle. `false` logs each entry's status once and again only when it changes. |
 | `reloadCheck` | `0` | Live reload: seconds between checks for a saved `config.lua` or `settings.lua` while running, e.g. `30`. Only useful if you can edit the files outside the game. `0` = off. |
 | `utcOffset` | `0` | Hours added to UTC for log timestamps (e.g. `1` for CET, `2` for CEST). Timestamps use the server's real clock, not in-game time. |

@@ -17,6 +17,7 @@ local batching = false -- true while a cycle runs; the screen is redrawn once at
 local rows = {}
 local header = ""
 local footer = ""
+local showRecent = true -- false: no recent log panel, the table uses the whole screen
 
 local COLORS = {
     white = 0xFFFFFF,
@@ -51,9 +52,13 @@ local function fitRight(text, width)
 end
 
 -- Screen areas: line 1 header, line 2 column titles, then the table rows, a
--- separator, the recent log lines, and the key help on the last line.
+-- separator, the recent log lines, and the key help on the last line. Without the
+-- recent panel the table rows go down to the key help line.
 local function layout()
     local width, height = gpu.getResolution()
+    if not showRecent then
+        return width, height, 0, nil, math.max(1, height - 3)
+    end
     local logLines = math.max(3, math.floor(height * 0.3))
     local separatorY = height - 1 - logLines
     local tableRows = math.max(1, separatorY - 3)
@@ -130,8 +135,10 @@ local function drawTable()
         end
     end
 
-    setColor("gray")
-    gpu.set(1, separatorY, fit("-- Recent " .. string.rep("-", math.max(0, width - 10)), width))
+    if separatorY then
+        setColor("gray")
+        gpu.set(1, separatorY, fit("-- Recent " .. string.rep("-", math.max(0, width - 10)), width))
+    end
 end
 
 local function drawLog()
@@ -211,6 +218,14 @@ function Display.stop()
     setLogHandler(nil)
     term.clear()
     term.setCursorBlink(true)
+end
+
+-- Shows or hides the recent log panel below the table
+function Display.setShowRecent(show)
+    if show ~= showRecent then
+        showRecent = show
+        drawAll()
+    end
 end
 
 function Display.isActive()

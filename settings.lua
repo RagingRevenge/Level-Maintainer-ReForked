@@ -49,6 +49,10 @@ settings.utcOffset = 0
 -- most recent log lines below it; "log" = a scrolling log.
 settings.display = "table"
 
+-- Show the most recent log lines below the status table. false = the table
+-- uses the whole screen (statuses, failures and errors still show in the table).
+settings.showRecent = true
+
 -- Live reload: how often, in seconds, to check whether config.lua or settings.lua
 -- was saved while the maintainer runs, and reload them. Only useful if you can
 -- edit the files outside the game (singleplayer, or a server on your own PC),
