@@ -1,8 +1,10 @@
 local computer = require("computer")
+local event = require("event")
 local filesystem = require("filesystem")
 local shell = require("shell")
 local ae2 = require("src.AE2")
-require("src.Utility") -- defines logInfo and setTimeOffset
+local display = require("src.Display")
+require("src.Utility") -- defines logInfo, setLogHandler, setTimeOffset and currentTime
 
 -- config.lua and settings.lua are read with loadfile rather than require (which caches
 -- until reboot), and reloaded whenever they are saved. Found the same way require would.
@@ -13,6 +15,7 @@ end
 local CONFIG_PATH = findFile("config")
 local SETTINGS_PATH = findFile("settings")
 local STARTUP_CHECK = 2 -- seconds between checks while waiting for a broken config.lua to be fixed
+local KEY_HELP = "E edit config  S edit settings  R reload  Q quit"
 
 -- Runs a Lua file that returns a table. Returns the table, or nil and an error message.
 local function loadTable(path)
@@ -43,6 +46,7 @@ local function buildSettings(userSettings, cfg)
         logRepeats = false,
         utcOffset = 0,
         reloadCheck = 0, -- live reload off; most players can't edit the file outside the game
+        display = "table",
     }
     for k, v in pairs(userSettings or {}) do
         s[k] = v
@@ -52,13 +56,26 @@ end
 
 local settings = buildSettings(nil, nil)
 local userSettings = nil -- last successfully loaded settings.lua
-local items, fluids = {}, nil
+local entries = {} -- {name, config, request} for every maintained entry, sorted by name
 local configTime, settingsTime = nil, nil -- last-modified times of the loaded files
+
+-- Switches between the status table and the scrolling log when settings.display changes
+local function updateDisplayMode()
+    local wantTable = settings.display ~= "log"
+    if wantTable and not display.isActive() then
+        if not display.start() then
+            logInfo("WARNING: no graphics card found, showing a scrolling log instead of the table.")
+        end
+    elseif not wantTable and display.isActive() then
+        display.stop()
+    end
+end
 
 local function applySettings(cfg)
     settings = buildSettings(userSettings, cfg)
     ae2.configure(settings)
     setTimeOffset(settings.utcOffset)
+    updateDisplayMode()
 end
 
 local function loadSettings()
@@ -74,7 +91,7 @@ end
 -- Runs fn protected so a component error (interface removed, stale craftable, ...)
 -- is logged and retried next cycle instead of killing the maintainer.
 local function try(fn, ...)
-    local ok, success, answer, result = pcall(fn, ...)
+    local ok, success, answer, result, amount = pcall(fn, ...)
     if not ok then
         -- Ctrl+Alt+C raises "interrupted" from inside os.sleep; let it stop the script
         if success == "interrupted" then
@@ -84,19 +101,23 @@ local function try(fn, ...)
         ae2.clearCache()
         return false, nil, "error"
     end
-    return success, answer, result
+    return success, answer, result, amount
 end
 
-local lastStatus = {} -- name -> status of the last message logged for that entry
+local currentStatus = {} -- name -> what the entry is doing now (shown in the status table)
+local lastLogged = {} -- name -> the last status message logged for it
+local lastAmount = {} -- name -> last known amount in stock (entries with a threshold)
 
--- Logs a status message for an entry. Unless logRepeats is on, the same status is
--- only logged once, until the entry's status changes.
+-- Sets an entry's status and logs the message, unless the last status message logged
+-- for that entry was the same (then it is only repeated with logRepeats on). Actions
+-- ("Requested ...") are logged separately and don't count, so an entry that takes turns
+-- between "requested" and "no free CPU" logs "no free CPU" only once.
 local function logStatus(name, status, message)
-    local repeated = lastStatus[name] == status
-    lastStatus[name] = status
-    if repeated and not settings.logRepeats then
+    currentStatus[name] = status
+    if lastLogged[name] == status and not settings.logRepeats then
         return
     end
+    lastLogged[name] = status
     logInfo(message)
 end
 
@@ -105,16 +126,17 @@ local function skip(name, status, message)
     if settings.logSkips then
         logStatus(name, status, message)
     else
-        lastStatus[name] = status
+        currentStatus[name] = status
     end
 end
 
 local retryAt = {} -- name -> uptime before which a failed entry is not calculated again
 local lastConfig = nil -- config in use, to tell which entries changed on reload
 local warnedCpuName = false
+local turn = 0 -- which entry goes first this cycle; moves on by one every cycle
 
 -- Refreshed at the start of every cycle
-local itemsCrafting, freeCpus, cpuBusy = {}, 0, {}
+local itemsCrafting, freeCpus, cpuBusy, totalCpus = {}, 0, {}, 0
 local useNamedCpu = false
 
 local function cpuAvailable()
@@ -136,7 +158,10 @@ local function maintain(name, config, request)
     elseif not cpuAvailable() then
         skip(name, "nocpu", name .. ": no free crafting CPU, skipping...")
     else
-        local success, answer, result = try(request, name, config[1], config[2], config[3])
+        local success, answer, result, amount = try(request, name, config[1], config[2], config[3])
+        if amount ~= nil then
+            lastAmount[name] = amount
+        end
         if result == "stocked" then
             skip(name, "stocked", answer)
         elseif result == "missing" then
@@ -148,12 +173,14 @@ local function maintain(name, config, request)
             end
             -- Logged every time; the retry wait that follows is covered by this message
             logInfo(answer)
-            lastStatus[name] = "retry"
+            currentStatus[name] = "retry"
+            lastLogged[name] = "retry"
         elseif result == "error" then
-            lastStatus[name] = "error" -- already logged by try()
+            currentStatus[name] = "error" -- already logged by try()
+            lastLogged[name] = "error"
         else
-            logInfo(answer)
-            lastStatus[name] = result
+            logInfo(answer) -- "Requested ...": an action, always logged
+            currentStatus[name] = result
         end
 
         if result ~= "failed" then
@@ -168,6 +195,62 @@ local function maintain(name, config, request)
             end
         end
     end
+end
+
+-- 11968656 -> "11.97M"
+local function formatAmount(n)
+    if type(n) ~= "number" then
+        return "-"
+    end
+    if n < 10000 then
+        return tostring(math.floor(n))
+    end
+    for _, unit in ipairs({{1e12, "T"}, {1e9, "G"}, {1e6, "M"}, {1e3, "k"}}) do
+        if n >= unit[1] then
+            local value = n / unit[1]
+            return string.format(value < 100 and "%.2f" or "%.1f", value) .. unit[2]
+        end
+    end
+end
+
+local STATUS_TEXT = {
+    crafting = {"crafting", "green"},
+    requested = {"requested", "yellow"},
+    stocked = {"stocked", "green"},
+    nocpu = {"waiting for CPU", "orange"},
+    missing = {"not craftable", "red"},
+    error = {"error", "red"},
+}
+
+-- Refreshes the status table (does nothing in log mode)
+local function render(title)
+    if not display.isActive() then
+        return
+    end
+    local now = computer.uptime()
+    local rows = {}
+    for _, entry in ipairs(entries) do
+        local status = currentStatus[entry.name]
+        local text, color = "waiting", "white"
+        if status == "retry" then
+            local left = math.ceil((retryAt[entry.name] or now) - now)
+            text = left > 0 and ("failed, retry " .. left .. "s") or "failed, retrying"
+            color = "red"
+        elseif STATUS_TEXT[status] then
+            text, color = STATUS_TEXT[status][1], STATUS_TEXT[status][2]
+        end
+        table.insert(rows, {
+            name = entry.name,
+            stock = formatAmount(lastAmount[entry.name]),
+            want = formatAmount(entry.config[1]),
+            batch = formatAmount(entry.config[2]),
+            status = text,
+            color = color,
+        })
+    end
+    local header = title or string.format("Level Maintainer   %s   CPUs free: %d/%d   Entries: %d",
+        currentTime(), math.max(freeCpus, 0), totalCpus, #entries)
+    display.update(rows, header, KEY_HELP)
 end
 
 local function sameEntry(a, b)
@@ -231,7 +314,8 @@ local function describeChanges(old, new)
                 changed = changed + 1
             end
             if not prev or not sameEntry(prev, conf) then
-                lastStatus[name] = nil
+                currentStatus[name] = nil
+                lastLogged[name] = nil
                 retryAt[name] = nil
             end
         end
@@ -247,12 +331,22 @@ local function describeChanges(old, new)
 end
 
 local function applyConfig(cfg)
-    items = validEntries(cfg.items, "items") or {}
-    fluids = validEntries(cfg.fluids, "fluids")
+    local items = validEntries(cfg.items, "items") or {}
+    local fluids = validEntries(cfg.fluids, "fluids")
     if fluids and next(fluids) ~= nil and not ae2.hasFluidSupport() then
         logInfo("WARNING: cfg.fluids is configured but the ME interface does not expose getFluidInNetwork (requires GTNH 2.9+). Fluid entries will be skipped.")
         fluids = nil
     end
+
+    entries = {}
+    for name, conf in pairs(items) do
+        table.insert(entries, {name = name, config = conf, request = ae2.requestItem})
+    end
+    for name, conf in pairs(fluids or {}) do
+        table.insert(entries, {name = name, config = conf, request = ae2.requestFluid})
+    end
+    table.sort(entries, function(a, b) return a.name < b.name end)
+
     lastConfig = cfg
     applySettings(cfg) -- an old config.lua may still set cfg.sleep
 end
@@ -306,8 +400,40 @@ local function checkForEdits()
     return reloadIfChanged()
 end
 
--- Waits settings.sleep seconds. If a check for edited files falls due during the
--- wait, it wakes up for it, and an edit ends the wait early so the new config is
+-- Opens a file in the OpenOS editor; the status table is paused while it is open
+local function editFile(path)
+    display.suspend()
+    shell.execute('edit "' .. path .. '"')
+    display.resume()
+end
+
+-- Waits up to `timeout` seconds while listening for keys:
+--   E edits config.lua, S edits settings.lua, R reloads, Q quits.
+-- Returns "edited" or "reload" when one of those keys was used, otherwise nil.
+local function idle(timeout)
+    local deadline = computer.uptime() + timeout
+    repeat
+        local name, _, char = event.pull(math.max(0, deadline - computer.uptime()), "key_down")
+        if name == "key_down" and char and char > 0 and char < 128 then
+            local key = string.char(char):lower()
+            if key == "e" then
+                editFile(CONFIG_PATH)
+                return "edited"
+            elseif key == "s" then
+                editFile(SETTINGS_PATH)
+                return "edited"
+            elseif key == "r" then
+                return "reload"
+            elseif key == "q" then
+                error("interrupted", 0) -- stops the same way as Ctrl+Alt+C
+            end
+        end
+    until computer.uptime() >= deadline
+    return nil
+end
+
+-- Waits settings.sleep seconds, listening for keys. An edit or reload, or a live
+-- reload check that finds a saved file, ends the wait early so the new config is
 -- used right away.
 local function waitForNextCycle()
     local deadline = computer.uptime() + settings.sleep
@@ -316,7 +442,12 @@ local function waitForNextCycle()
         if (tonumber(settings.reloadCheck) or 0) > 0 then
             wake = math.min(deadline, nextReloadCheck)
         end
-        os.sleep(math.max(0, wake - computer.uptime()))
+        if idle(math.max(0, wake - computer.uptime())) then
+            if not reloadIfChanged() then
+                logInfo("config.lua and settings.lua are unchanged.")
+            end
+            return
+        end
         if checkForEdits() then
             return
         end
@@ -326,13 +457,15 @@ end
 local function run()
     while true do
         checkForEdits()
+        display.beginBatch()
 
         local ok
-        ok, itemsCrafting, freeCpus, cpuBusy = pcall(ae2.checkIfCrafting)
+        ok, itemsCrafting, freeCpus, cpuBusy, totalCpus = pcall(ae2.checkIfCrafting)
         if not ok then
             -- The network can't be read right now; requests would fail too, so wait for the next cycle
             logInfo("ERROR: " .. tostring(itemsCrafting))
             ae2.clearCache()
+            itemsCrafting, freeCpus, cpuBusy, totalCpus = {}, 0, {}, 0
         else
             useNamedCpu = settings.cpuName ~= nil and cpuBusy[settings.cpuName] ~= nil
             if settings.cpuName ~= nil and not useNamedCpu and not warnedCpuName then
@@ -340,17 +473,21 @@ local function run()
                 warnedCpuName = true
             end
 
-            for item, config in pairs(items) do
-                maintain(item, config, ae2.requestItem)
-            end
-
-            if fluids then
-                for fluid, config in pairs(fluids) do
-                    maintain(fluid, config, ae2.requestFluid)
+            -- Start one entry further along each cycle, so with few free CPUs every
+            -- entry gets its turn instead of the same one winning every time
+            local count = #entries
+            if count > 0 then
+                local first = turn % count
+                for i = 0, count - 1 do
+                    local entry = entries[(first + i) % count + 1]
+                    maintain(entry.name, entry.config, entry.request)
                 end
+                turn = turn + 1
             end
         end
 
+        render()
+        display.endBatch()
         waitForNextCycle()
     end
 end
@@ -361,8 +498,9 @@ local function waitForInterface()
         return
     end
     logInfo("Waiting for an ME interface (adapter touching a full-block ME interface)...")
+    render("Level Maintainer   waiting for an ME interface")
     repeat
-        os.sleep(5)
+        idle(5)
     until ae2.connect()
     logInfo("ME interface found.")
 end
@@ -372,9 +510,10 @@ local function loadInitialConfig()
     local cfg, err = readConfig()
     if not cfg then
         logInfo("ERROR: config.lua has a mistake: " .. err)
-        logInfo("Fix and save it; the maintainer starts as soon as it loads.")
+        logInfo("Press E to fix it in the editor (or fix and save it another way); the maintainer starts as soon as it loads.")
+        render("Level Maintainer   config.lua has a mistake")
         repeat
-            os.sleep(STARTUP_CHECK)
+            idle(STARTUP_CHECK)
             if filesystem.lastModified(CONFIG_PATH) ~= configTime then
                 cfg, err = readConfig()
                 if not cfg then
@@ -389,10 +528,13 @@ end
 
 local function main()
     local ok, err = loadSettings()
+    applySettings(nil)
     if not ok then
         logInfo("WARNING: could not load settings.lua, using defaults (" .. err .. ")")
     end
-    applySettings(nil)
+    if not display.isActive() then
+        logInfo("Keys (between cycles): " .. KEY_HELP .. ". Ctrl+Alt+C also stops it.")
+    end
 
     -- src.AE2 stays loaded between runs, so forget lookups from a previous run
     -- (e.g. a pattern added in AE2 since then would still count as not craftable)
@@ -400,29 +542,31 @@ local function main()
     waitForInterface()
     loadInitialConfig()
 
-    -- run() only ends by an error. Anything other than Ctrl+Alt+C is logged and the
+    -- run() only ends by an error. Anything other than Ctrl+Alt+C or Q is logged and the
     -- loop restarts after a pause, so one unexpected error doesn't stop maintenance.
     while true do
         local _, err = pcall(run)
         if err == "interrupted" then
             error(err, 0)
         end
+        display.endBatch()
         local delay = math.max(tonumber(settings.retryDelay) or 0, 5)
         logInfo("ERROR: " .. tostring(err))
         logInfo("Restarting in " .. delay .. "s...")
         ae2.clearCache()
-        os.sleep(delay)
+        idle(delay)
     end
 end
 
--- Ctrl+Alt+C raises "interrupted" from inside os.sleep. Exit quietly instead
--- of letting OpenOS print it as an error with a stack trace.
+-- Ctrl+Alt+C raises "interrupted" from inside os.sleep (Q raises the same). Exit
+-- quietly instead of letting OpenOS print it as an error with a stack trace.
 local ok, err = xpcall(main, function(msg)
     if msg == "interrupted" then
         return msg
     end
     return debug.traceback(tostring(msg), 2)
 end)
+display.stop()
 if not ok then
     if err == "interrupted" then
         logInfo("Maintainer stopped.")

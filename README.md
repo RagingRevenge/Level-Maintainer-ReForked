@@ -45,7 +45,39 @@ Run it from the folder you installed to (not needed if auto-start is on)
 Maintainer
 ```
 
-Stop it by holding Ctrl+Alt+C for a second. Crafts already sent to AE2 keep running.
+Stop it by pressing Q, or holding Ctrl+Alt+C for a second. Crafts already sent to AE2 keep running.
+
+# Screen and keys
+
+By default the screen shows a status table, redrawn every cycle:
+
+```
+Level Maintainer   14:02:11   CPUs free: 2/8   Entries: 3
+Name                          Stock     Want   Batch  Status
+Blank Pattern                   385      256     512  stocked
+Fluorescent Dye                   -        -    1024  crafting
+Phthalic Acid                11.97M   10.00M   3.00M  stocked
+-- Recent --------------------------------------------------
+[14:01:51] Requested Fluorescent Dye x 1024
+E edit config  S edit settings  R reload  Q quit
+```
+
+- **Stock** is shown for entries with a threshold (the maintainer only reads the stock when it has to compare it). Fluids are in mB.
+- **Status** is one of: `stocked`, `crafting`, `requested`, `waiting for CPU`, `failed, retry 45s`, `not craftable`, `error`, or `waiting` before the entry's first check.
+- With a color GPU the rows are colored by status. If there are more entries than rows, the last row says how many are hidden; a bigger screen shows more.
+
+Set `settings.display = "log"` for the plain scrolling log instead.
+
+Keys work while the maintainer waits between cycles (and while it waits at startup for an ME interface or a fixed `config.lua`):
+
+| Key | What it does |
+|---|---|
+| E | Opens `config.lua` in the editor. Save with Ctrl+S, close with Ctrl+W; the maintainer reloads it and starts a new cycle. |
+| S | Same for `settings.lua`. |
+| R | Reloads `config.lua` and `settings.lua` if they were saved since they were last read (e.g. edited from your PC). |
+| Q | Stops the maintainer. |
+
+Each cycle starts one entry further down the list, so when crafting CPUs are scarce every entry gets its turn at a free CPU.
 
 # Auto-start and crash recovery
 
@@ -120,6 +152,7 @@ Timing and behaviour live in `settings.lua` (anything missing falls back to a de
 | `cacheDuration` | `600` | Seconds craftable lookups are cached. New patterns are picked up after at most this long. |
 | `pollInterval` | `1` | Seconds between checks while AE2 calculates a request. |
 | `logSkips` | `true` | Log entries skipped for being in progress, stocked, waiting to retry or waiting for a CPU. |
+| `display` | `"table"` | `"table"` shows the status table described under [Screen and keys](#screen-and-keys); `"log"` shows a scrolling log. |
 | `logRepeats` | `false` | Repeat those messages every cycle. `false` logs each entry's status once and again only when it changes. |
 | `reloadCheck` | `0` | Live reload: seconds between checks for a saved `config.lua` or `settings.lua` while running, e.g. `30`. Only useful if you can edit the files outside the game. `0` = off. |
 | `utcOffset` | `0` | Hours added to UTC for log timestamps (e.g. `1` for CET, `2` for CEST). Timestamps use the server's real clock, not in-game time. |
@@ -128,11 +161,11 @@ Timing and behaviour live in `settings.lua` (anything missing falls back to a de
 
 ## Changing the config while it runs
 
-No reboot is needed: `config.lua` and `settings.lua` are read fresh every time the maintainer starts. Press Ctrl+Alt+C, `edit config.lua`, save with Ctrl+S, exit with Ctrl+W and run `Maintainer` again. (The maintainer uses the screen while it runs, so it has to be stopped to use `edit`.)
+No reboot or restart is needed: press E while the maintainer runs to edit `config.lua` (S for `settings.lua`), save with Ctrl+S and close with Ctrl+W. The maintainer reloads the file and carries on. The files are also read fresh every time the maintainer starts.
 
 ### Live reload (off by default)
 
-If you can edit the files outside the game (singleplayer, or a server on your own PC), the maintainer can pick up changes without being stopped. Set `reloadCheck` in `settings.lua` to how often to check, e.g. `30` seconds, then edit the file in the world save: `saves/<world>/opencomputers/<drive address>/home/config.lua` (run `df` in OC to see the drive address). At the next check the maintainer logs
+If you edit the files outside the game (singleplayer, or a server on your own PC), press R to load the changes, or let the maintainer pick them up by itself: set `reloadCheck` in `settings.lua` to how often to check, e.g. `30` seconds, then edit the file in the world save: `saves/<world>/opencomputers/<drive address>/home/config.lua` (run `df` in OC to see the drive address). At the next check the maintainer logs
 
 ```
 Reloaded config.lua (1 added, 0 changed, 0 removed)

@@ -87,8 +87,11 @@ local function getCraftableForItem(itemName)
     return nil
 end
 
+-- requestItem and requestFluid return: success, message, result ("requested", "failed",
+-- "stocked" or "missing"), and the amount in stock when it was checked (threshold set).
 function AE2.requestItem(name, threshold, count, fluidName)
     local craftable, item = getCraftableForItem(name)
+    local amount = nil
 
     if craftable then
         -- A fluid listed under cfg.items: check its stock as a fluid, not as an item
@@ -97,7 +100,7 @@ function AE2.requestItem(name, threshold, count, fluidName)
         end
         if threshold ~= nil then
             local itemInSystem = nil
-            
+
             if fluidName then
                 local fluidTag = '{Fluid:' .. fluidName .. '}'
                 itemInSystem = ME.getItemInNetwork("ae2fc:fluid_drop", 0, fluidTag)
@@ -114,22 +117,23 @@ function AE2.requestItem(name, threshold, count, fluidName)
                     end
                 end
             end
-            
-            if itemInSystem ~= nil and itemInSystem.size >= threshold then 
-                return table.unpack({false, "The amount of " .. (itemInSystem.label or name) .. " (" .. itemInSystem.size .. ") meets or exceeds threshold (" .. threshold .. ")! Aborting request.", "stocked"})
+
+            amount = itemInSystem and itemInSystem.size or 0 -- not found = none stored
+            if itemInSystem ~= nil and amount >= threshold then
+                return false, "The amount of " .. (itemInSystem.label or name) .. " (" .. amount .. ") meets or exceeds threshold (" .. threshold .. ")! Aborting request.", "stocked", amount
             end
         end
-        
+
         if item.label == name then
             local ok, reason = submit(craftable, count)
             if not ok then
-                return table.unpack({false, "Failed to request " .. name .. " x " .. count .. " (" .. tostring(reason) .. ")", "failed"})
+                return false, "Failed to request " .. name .. " x " .. count .. " (" .. tostring(reason) .. ")", "failed", amount
             else
-                return table.unpack({true, "Requested " .. name .. " x " .. count, "requested"})
+                return true, "Requested " .. name .. " x " .. count, "requested", amount
             end
         end
     end
-    return table.unpack({false, name .. " is not craftable!", "missing"})
+    return false, name .. " is not craftable!", "missing"
 end
 
 -- Native fluid maintenance via getFluidInNetwork (GTNH 2.9+).
@@ -137,6 +141,7 @@ end
 -- auto-detected from the craftable's stack if omitted (pass it only as an override).
 function AE2.requestFluid(name, threshold, count, fluidName)
     local craftable, stack = getCraftableForItem(name)
+    local amount = nil
 
     if craftable then
         if threshold ~= nil then
@@ -150,31 +155,33 @@ function AE2.requestFluid(name, threshold, count, fluidName)
 
             if fluidName and ME.getFluidInNetwork then
                 local fluidInSystem = ME.getFluidInNetwork(fluidName)
-                local amount = fluidInSystem and (fluidInSystem.size or fluidInSystem.amount)
-                if amount and amount >= threshold then
-                    return table.unpack({false, "The amount of " .. (fluidInSystem.label or name) .. " (" .. amount .. " mB) meets or exceeds threshold (" .. threshold .. " mB)! Aborting request.", "stocked"})
+                amount = fluidInSystem and (fluidInSystem.size or fluidInSystem.amount) or 0 -- not found = none stored
+                if fluidInSystem ~= nil and amount >= threshold then
+                    return false, "The amount of " .. (fluidInSystem.label or name) .. " (" .. amount .. " mB) meets or exceeds threshold (" .. threshold .. " mB)! Aborting request.", "stocked", amount
                 end
             end
         end
 
         local ok, reason = submit(craftable, count)
         if not ok then
-            return table.unpack({false, "Failed to request " .. name .. " x " .. count .. " mB (" .. tostring(reason) .. ")", "failed"})
+            return false, "Failed to request " .. name .. " x " .. count .. " mB (" .. tostring(reason) .. ")", "failed", amount
         else
-            return table.unpack({true, "Requested " .. name .. " x " .. count .. " mB", "requested"})
+            return true, "Requested " .. name .. " x " .. count .. " mB", "requested", amount
         end
     end
-    return table.unpack({false, name .. " is not craftable!", "missing"})
+    return false, name .. " is not craftable!", "missing"
 end
 
 -- Returns: set of labels currently being crafted, number of idle CPUs,
--- and a name -> busy map of all CPUs.
+-- a name -> busy map of all CPUs, and the total number of CPUs.
 function AE2.checkIfCrafting()
     local cpus = ME.getCpus()
     local items = {}
     local freeCpus = 0
+    local totalCpus = 0
     local cpuBusy = {}
     for k, v in pairs(cpus) do
+        totalCpus = totalCpus + 1
         -- Only a busy CPU has a job to report (saves a call per idle CPU per cycle)
         if v.busy then
             local finaloutput = v.cpu.finalOutput()
@@ -190,7 +197,7 @@ function AE2.checkIfCrafting()
         end
     end
 
-    return items, freeCpus, cpuBusy
+    return items, freeCpus, cpuBusy, totalCpus
 end
 
 -- Returns true if the ME interface exposes the GTNH 2.9+ native fluid API.

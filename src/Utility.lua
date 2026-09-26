@@ -22,8 +22,25 @@ local function timestamp()
     return os.date("%H:%M:%S") -- in-game time as a fallback
 end
 
+-- Current real time as HH:MM:SS
+function currentTime()
+    return timestamp()
+end
+
+local logHandler = nil
+
+-- Sends log lines to handler(line) instead of printing them (nil = print again)
+function setLogHandler(handler)
+    logHandler = handler
+end
+
 function logInfo(message)
     if type(message) == "string" then
-        print("[" .. timestamp() .. "] " .. message)
+        local line = "[" .. timestamp() .. "] " .. message
+        if logHandler then
+            logHandler(line)
+        else
+            print(line)
+        end
     end
 end

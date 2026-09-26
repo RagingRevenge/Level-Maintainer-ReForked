@@ -1,6 +1,7 @@
 local settings = {}
 
 -- Maintainer behaviour. The list of maintained items lives in config.lua.
+-- While the maintainer runs, press E to edit config.lua or S to edit this file.
 -- Changes take effect the next time Maintainer starts (no reboot needed), or
 -- while it runs if live reload (reloadCheck, at the bottom) is on.
 
@@ -43,6 +44,10 @@ settings.logRepeats = false
 -- Hours to add to UTC for log timestamps, e.g. 1 for CET, 2 for CEST,
 -- -5 for EST. Change it when daylight saving time starts or ends.
 settings.utcOffset = 0
+
+-- What the screen shows: "table" = a status table with one row per entry and the
+-- most recent log lines below it; "log" = a scrolling log.
+settings.display = "table"
 
 -- Live reload: how often, in seconds, to check whether config.lua or settings.lua
 -- was saved while the maintainer runs, and reload them. Only useful if you can
