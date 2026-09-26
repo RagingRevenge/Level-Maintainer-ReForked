@@ -102,30 +102,48 @@ local function maintain(name, config, request)
     end
 end
 
-while true do
-    local ok
-    ok, itemsCrafting, freeCpus, cpuBusy = pcall(ae2.checkIfCrafting)
-    if not ok then
-        logInfo("ERROR: " .. tostring(itemsCrafting))
-        ae2.clearCache()
-        itemsCrafting, freeCpus, cpuBusy = {}, 0, {}
-    end
-
-    useNamedCpu = settings.cpuName ~= nil and cpuBusy[settings.cpuName] ~= nil
-    if ok and settings.cpuName ~= nil and not useNamedCpu and not warnedCpuName then
-        logInfo("WARNING: no crafting CPU named '" .. settings.cpuName .. "' found, AE2 will use any CPU.")
-        warnedCpuName = true
-    end
-
-    for item, config in pairs(items) do
-        maintain(item, config, ae2.requestItem)
-    end
-
-    if fluids then
-        for fluid, config in pairs(fluids) do
-            maintain(fluid, config, ae2.requestFluid)
+local function run()
+    while true do
+        local ok
+        ok, itemsCrafting, freeCpus, cpuBusy = pcall(ae2.checkIfCrafting)
+        if not ok then
+            logInfo("ERROR: " .. tostring(itemsCrafting))
+            ae2.clearCache()
+            itemsCrafting, freeCpus, cpuBusy = {}, 0, {}
         end
-    end
 
-    os.sleep(settings.sleep)
+        useNamedCpu = settings.cpuName ~= nil and cpuBusy[settings.cpuName] ~= nil
+        if ok and settings.cpuName ~= nil and not useNamedCpu and not warnedCpuName then
+            logInfo("WARNING: no crafting CPU named '" .. settings.cpuName .. "' found, AE2 will use any CPU.")
+            warnedCpuName = true
+        end
+
+        for item, config in pairs(items) do
+            maintain(item, config, ae2.requestItem)
+        end
+
+        if fluids then
+            for fluid, config in pairs(fluids) do
+                maintain(fluid, config, ae2.requestFluid)
+            end
+        end
+
+        os.sleep(settings.sleep)
+    end
+end
+
+-- Ctrl+Alt+C raises "interrupted" from inside os.sleep. Exit quietly instead
+-- of letting OpenOS print it as an error with a stack trace.
+local ok, err = xpcall(run, function(msg)
+    if msg == "interrupted" then
+        return msg
+    end
+    return debug.traceback(tostring(msg), 2)
+end)
+if not ok then
+    if err == "interrupted" then
+        logInfo("Maintainer stopped.")
+    else
+        error(err, 0)
+    end
 end

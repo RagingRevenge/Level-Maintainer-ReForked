@@ -39,6 +39,8 @@ Run it from the folder you installed to
 Maintainer
 ```
 
+Stop it by holding Ctrl+Alt+C for a second. Crafts already sent to AE2 keep running.
+
 # Config
 
 You can change maintained items in `config.lua`. There are two blocks: `cfg.items` for regular items (and the legacy `ae2fc:fluid_drop` workaround) and `cfg.fluids` for native fluid maintenance on GTNH 2.9+.
