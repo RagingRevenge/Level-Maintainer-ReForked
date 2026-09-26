@@ -3,7 +3,7 @@
 Lets you passive lines easily, without lag and randomness of AE2 maintainer.
 Also supports having a threshold.
 
-Fork of [Echoloquate/Level-Maintainer](https://github.com/Echoloquate/Level-Maintainer) with fixes for the lookup cache, NBT item thresholds and crash recovery, plus a `settings.lua` for timing, retry and CPU options.
+Fork of [Echoloquate/Level-Maintainer](https://github.com/Echoloquate/Level-Maintainer) with fixes for the lookup cache, NBT item and fluid thresholds and crash recovery, a `settings.lua` for timing, retry and CPU options, and optional auto-start.
 
 # Setup
 
@@ -13,6 +13,7 @@ Fork of [Echoloquate/Level-Maintainer](https://github.com/Echoloquate/Level-Main
 - An internet card (needed to download the scripts)
 - An adapter touching a full-block ME interface on your network
 - A Crafting Monitor on every crafting CPU (used to see what is already being crafted)
+- Optional: a redstone card and a slow redstone clock, to turn the computer back on after a power loss (see [Auto-start and crash recovery](#auto-start-and-crash-recovery))
 
 ## Install OpenOS
 
@@ -31,15 +32,51 @@ Download it (run the same command again later to update)
 wget -f https://raw.githubusercontent.com/Willshaper/Level-Maintainer/master/installer.lua && installer
 ```
 
-The installer replaces the scripts but keeps an existing `config.lua` and `settings.lua`, then reboots.
+The installer replaces the scripts but keeps an existing `config.lua` and `settings.lua`. It then asks:
 
-Run it from the folder you installed to
+- **Start Maintainer automatically when the computer boots?** Adds a line to `/home/.shrc`.
+- **Turn the computer on when it receives a redstone signal?** Only asked when a redstone card is installed.
+
+Then it reboots.
+
+Run it from the folder you installed to (not needed if auto-start is on)
 
 ```bash
 Maintainer
 ```
 
 Stop it by holding Ctrl+Alt+C for a second. Crafts already sent to AE2 keep running.
+
+# Auto-start and crash recovery
+
+While running, the maintainer recovers from problems by itself:
+
+- An ME interface that is removed or replaced, or an AE2 error on one entry, is logged and retried on the next cycle.
+- Any other unexpected error is logged, and the maintainer restarts after `retryDelay` seconds (at least 5).
+- If no ME interface is attached when it starts, it waits for one instead of exiting.
+- Server restarts and chunk unloads are fine: OpenComputers saves the running computer and resumes it.
+
+It still stops for a mistake in `config.lua` (fix the file and start it again) and when you press Ctrl+Alt+C.
+
+## Start on boot
+
+Answer yes to the first installer question, or add this line to `/home/.shrc` yourself (use the folder you installed to):
+
+```bash
+cd "/home" && Maintainer
+```
+
+Delete that line to turn auto-start off.
+
+## Turn back on after a power loss
+
+A computer that runs out of power switches off and stays off. To have it switch itself back on:
+
+1. Put a redstone card in the computer.
+2. Answer yes to the redstone question in the installer, or run `lua` and enter `require("component").redstone.setWakeThreshold(1)`. The card remembers this.
+3. Wire a slow redstone clock (one pulse every 30-60 seconds) into the computer.
+
+Each pulse turns the computer on if it is off; a running computer ignores it. With auto-start on, the maintainer starts with it.
 
 # Config
 

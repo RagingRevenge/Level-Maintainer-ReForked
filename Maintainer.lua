@@ -28,11 +28,6 @@ setTimeOffset(settings.utcOffset)
 local items = cfg.items
 local fluids = cfg.fluids
 
-if fluids and next(fluids) ~= nil and not ae2.hasFluidSupport() then
-    logInfo("WARNING: cfg.fluids is configured but the ME interface does not expose getFluidInNetwork (requires GTNH 2.9+). Fluid entries will be skipped.")
-    fluids = nil
-end
-
 -- Runs fn protected so a component error (interface removed, stale craftable, ...)
 -- is logged and retried next cycle instead of killing the maintainer.
 local function try(fn, ...)
@@ -134,9 +129,44 @@ local function run()
     end
 end
 
+-- At boot the computer can start before the adapter/interface is ready, so wait for it
+local function waitForInterface()
+    if ae2.connect() then
+        return
+    end
+    logInfo("Waiting for an ME interface (adapter touching a full-block ME interface)...")
+    repeat
+        os.sleep(5)
+    until ae2.connect()
+    logInfo("ME interface found.")
+end
+
+local function main()
+    waitForInterface()
+
+    if fluids and next(fluids) ~= nil and not ae2.hasFluidSupport() then
+        logInfo("WARNING: cfg.fluids is configured but the ME interface does not expose getFluidInNetwork (requires GTNH 2.9+). Fluid entries will be skipped.")
+        fluids = nil
+    end
+
+    -- run() only ends by an error. Anything other than Ctrl+Alt+C is logged and the
+    -- loop restarts after a pause, so one unexpected error doesn't stop maintenance.
+    while true do
+        local _, err = pcall(run)
+        if err == "interrupted" then
+            error(err, 0)
+        end
+        local delay = math.max(tonumber(settings.retryDelay) or 0, 5)
+        logInfo("ERROR: " .. tostring(err))
+        logInfo("Restarting in " .. delay .. "s...")
+        ae2.clearCache()
+        os.sleep(delay)
+    end
+end
+
 -- Ctrl+Alt+C raises "interrupted" from inside os.sleep. Exit quietly instead
 -- of letting OpenOS print it as an error with a stack trace.
-local ok, err = xpcall(run, function(msg)
+local ok, err = xpcall(main, function(msg)
     if msg == "interrupted" then
         return msg
     end

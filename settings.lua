@@ -9,6 +9,8 @@ settings.sleep = 10
 -- After a crafting request fails (missing ingredients, no suitable CPU, ...),
 -- wait this many seconds before calculating that entry again.
 -- Other entries are unaffected. 0 = retry every cycle.
+-- Also the pause before the maintainer restarts itself after an unexpected
+-- error (at least 5 seconds).
 settings.retryDelay = 60
 
 -- Only start a calculation when a crafting CPU is idle (or the CPU named in

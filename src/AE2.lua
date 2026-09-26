@@ -1,8 +1,22 @@
 local component = require("component")
 local computer = require("computer")
-local ME = component.me_interface
 
 local AE2 = {}
+
+-- Resolved on demand so the script can start (and wait) before the interface is attached
+local ME = nil
+
+local function resolveInterface()
+    if component.isAvailable("me_interface") then
+        ME = component.me_interface
+    end
+    return ME ~= nil
+end
+
+-- Returns true once an ME interface is available
+function AE2.connect()
+    return resolveInterface()
+end
 
 -- Lightweight cache for specific items only.
 -- Values: a craftable userdata (hit), or `false` (negative lookup).
@@ -184,15 +198,13 @@ end
 
 -- Returns true if the ME interface exposes the GTNH 2.9+ native fluid API.
 function AE2.hasFluidSupport()
-    return ME.getFluidInNetwork ~= nil
+    return ME ~= nil and ME.getFluidInNetwork ~= nil
 end
 
 -- Function to manually clear the cache if needed
 function AE2.clearCache()
     -- Re-resolve the interface in case the adapter/interface was replaced
-    if component.isAvailable("me_interface") then
-        ME = component.me_interface
-    end
+    resolveInterface()
     itemCache = {}
     fluidNameCache = {}
     cacheTimestamp = 0
