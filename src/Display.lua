@@ -15,9 +15,11 @@ local active = false
 local suspended = false -- true while another program (edit) uses the screen
 local batching = false -- true while a cycle runs; the screen is redrawn once at its end
 local rows = {}
-local header = ""
+local header = {} -- list of {text, keep}; parts with a lower `keep` are dropped first on narrow screens
 local footer = ""
+local footerShort = "" -- used when the full key help doesn't fit
 local showRecent = true -- false: no recent log panel, the table uses the whole screen
+local page = 1 -- which page of the table is shown when it has more rows than fit
 
 local COLORS = {
     white = 0xFFFFFF,
@@ -103,13 +105,54 @@ local function formatRow(nameWidth, columns, row)
     return line .. "  " .. row.status
 end
 
+local function pageCount(tableRows)
+    return math.max(1, math.ceil(#rows / tableRows))
+end
+
+-- Joins the header parts to fit the width: first with smaller gaps, then by dropping
+-- the least important parts (the page number is kept longest).
+local function headerLine(width, pages)
+    local parts = {}
+    for _, part in ipairs(header) do
+        table.insert(parts, part)
+    end
+    if pages > 1 then
+        table.insert(parts, {text = "Page " .. math.min(page, pages) .. "/" .. pages, keep = 100})
+    end
+    while true do
+        local texts = {}
+        for _, part in ipairs(parts) do
+            table.insert(texts, part.text)
+        end
+        for _, gap in ipairs({"   ", "  "}) do
+            local line = table.concat(texts, gap)
+            if unicode.len(line) <= width or #parts <= 1 then
+                return line
+            end
+        end
+        local lowest = 1
+        for i, part in ipairs(parts) do
+            if part.keep < parts[lowest].keep then
+                lowest = i
+            end
+        end
+        table.remove(parts, lowest)
+    end
+end
+
+local function drawHeader()
+    local width, _, _, _, tableRows = layout()
+    colorSetter()("cyan")
+    gpu.set(1, 1, fit(headerLine(width, pageCount(tableRows)), width))
+end
+
 local function drawTable()
     local width, _, _, separatorY, tableRows = layout()
     local setColor = colorSetter()
     local nameWidth, columns = columnsFor(width)
+    page = math.min(page, pageCount(tableRows))
 
-    setColor("cyan")
-    gpu.set(1, 1, fit(header, width))
+    drawHeader()
     setColor("gray")
     local titles = {name = "Name", status = "Status"}
     for _, column in ipairs(columns) do
@@ -117,19 +160,13 @@ local function drawTable()
     end
     gpu.set(1, 2, fit(formatRow(nameWidth, columns, titles), width))
 
-    local shown = #rows
-    if shown > tableRows then
-        shown = tableRows - 1 -- leave a line for "... and N more"
-    end
+    local first = (page - 1) * tableRows
     for i = 1, tableRows do
         local y = 2 + i
-        local row = rows[i]
-        if i <= shown and row then
+        local row = rows[first + i]
+        if row then
             setColor(row.color)
             gpu.set(1, y, fit(formatRow(nameWidth, columns, row), width))
-        elseif i == shown + 1 and #rows > shown then
-            setColor("gray")
-            gpu.set(1, y, fit("... and " .. (#rows - shown) .. " more (a bigger screen shows more rows)", width))
         else
             gpu.fill(1, y, width, 1, " ")
         end
@@ -161,8 +198,17 @@ local function drawLog()
             gpu.fill(1, y, width, 1, " ")
         end
     end
+    local _, _, _, _, tableRows = layout()
+    local keys, keysShort = footer, footerShort
+    if pageCount(tableRows) > 1 then
+        keys = keys .. "  PgUp/PgDn page"
+        keysShort = keysShort .. "  PgUp/PgDn"
+    end
+    if unicode.len(keys) > width then
+        keys = keysShort
+    end
     setColor("gray")
-    gpu.set(1, height, fit(footer, width))
+    gpu.set(1, height, fit(keys, width))
     setColor("white")
 end
 
@@ -220,6 +266,35 @@ function Display.stop()
     term.setCursorBlink(true)
 end
 
+-- Moves the table `delta` pages forward (1) or back (-1)
+function Display.changePage(delta)
+    if not active or suspended then
+        return
+    end
+    local _, _, _, _, tableRows = layout()
+    local newPage = math.max(1, math.min(pageCount(tableRows), page + delta))
+    if newPage ~= page then
+        page = newPage
+        drawAll()
+    end
+end
+
+-- Header parts: a list of {text = ..., keep = number}, or a single string
+local function headerParts(value)
+    if type(value) == "string" then
+        return {{text = value, keep = 100}}
+    end
+    return value or {}
+end
+
+-- Replaces the header line (e.g. to count down to the next cycle)
+function Display.setHeader(parts)
+    header = headerParts(parts)
+    if active and not suspended and not batching then
+        guarded(drawHeader)
+    end
+end
+
 -- Shows or hides the recent log panel below the table
 function Display.setShowRecent(show)
     if show ~= showRecent then
@@ -265,11 +340,13 @@ function Display.endBatch()
     drawAll()
 end
 
--- rows: list of {name, stock, want, batch, status, color}
-function Display.update(newRows, newHeader, newFooter)
+-- rows: list of {name, stock, want, batch, status, color}; header: see Display.setHeader;
+-- footer / footerShort: key help, the short one for narrow screens
+function Display.update(newRows, newHeader, newFooter, newFooterShort)
     rows = newRows
-    header = newHeader
-    footer = newFooter
+    header = headerParts(newHeader)
+    footer = newFooter or ""
+    footerShort = newFooterShort or footer
     if not batching then
         drawAll()
     end

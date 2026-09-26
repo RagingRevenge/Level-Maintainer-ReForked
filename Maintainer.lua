@@ -16,6 +16,7 @@ local CONFIG_PATH = findFile("config")
 local SETTINGS_PATH = findFile("settings")
 local STARTUP_CHECK = 2 -- seconds between checks while waiting for a broken config.lua to be fixed
 local KEY_HELP = "E edit config  S edit settings  R reload  Q quit"
+local KEY_HELP_SHORT = "E config  S settings  R reload  Q quit"
 
 -- Runs a Lua file that returns a table. Returns the table, or nil and an error message.
 local function loadTable(path)
@@ -113,22 +114,29 @@ local currentStatus = {} -- name -> what the entry is doing now (shown in the st
 local lastLogged = {} -- name -> the last status message logged for it
 local lastAmount = {} -- name -> last known amount in stock (entries with a threshold)
 
+-- logRepeats shows everything that happens, every cycle, in the status table's Recent
+-- panel. The scrolling log (display = "log") always stays de-duplicated.
+local function showEverything()
+    return settings.logRepeats and display.isActive()
+end
+
 -- Sets an entry's status and logs the message, unless the last status message logged
--- for that entry was the same (then it is only repeated with logRepeats on). Actions
--- ("Requested ...") are logged separately and don't count, so an entry that takes turns
--- between "requested" and "no free CPU" logs "no free CPU" only once.
+-- for that entry was the same. Actions ("Requested ...") are logged separately and don't
+-- count, so an entry that takes turns between "requested" and "no free CPU" logs
+-- "no free CPU" only once.
 local function logStatus(name, status, message)
     currentStatus[name] = status
-    if lastLogged[name] == status and not settings.logRepeats then
+    if lastLogged[name] == status and not showEverything() then
         return
     end
     lastLogged[name] = status
     logInfo(message)
 end
 
--- Skips (already crafting, stocked, waiting to retry, no CPU) are hidden entirely with logSkips = false
+-- Skips (already crafting, stocked, waiting to retry, no CPU) are hidden entirely with
+-- logSkips = false (unless logRepeats shows everything)
 local function skip(name, status, message)
-    if settings.logSkips then
+    if settings.logSkips or showEverything() then
         logStatus(name, status, message)
     else
         currentStatus[name] = status
@@ -223,39 +231,56 @@ local STATUS_TEXT = {
     requested = {"requested", "yellow"},
     stocked = {"stocked", "green"},
     nocpu = {"waiting for CPU", "orange"},
+    retry = {"failed", "red"}, -- the retry time is in the log line
     missing = {"not craftable", "red"},
     error = {"error", "red"},
 }
+
+-- Shown on top of the table, so they are on the first page
+local PROBLEM = {retry = true, missing = true, error = true}
+
+local nextCycleAt = nil -- uptime when the wait for the next cycle ends (nil while a cycle runs)
+
+-- Header parts; on a narrow screen the ones with the lowest `keep` are left out first
+local function headerParts()
+    local parts = {
+        {text = "Level Maintainer", keep = 10},
+        {text = currentTime(), keep = 40},
+        {text = string.format("CPUs free: %d/%d", math.max(freeCpus, 0), totalCpus), keep = 50},
+        {text = "Entries: " .. #entries, keep = 30},
+    }
+    if nextCycleAt then
+        table.insert(parts, {text = "Next cycle in " .. math.max(0, math.ceil(nextCycleAt - computer.uptime())) .. "s", keep = 90})
+    end
+    return parts
+end
 
 -- Refreshes the status table (does nothing in log mode)
 local function render(title)
     if not display.isActive() then
         return
     end
-    local now = computer.uptime()
     local rows = {}
     for _, entry in ipairs(entries) do
         local status = currentStatus[entry.name]
-        local text, color = "waiting", "white"
-        if status == "retry" then
-            local left = math.ceil((retryAt[entry.name] or now) - now)
-            text = left > 0 and ("failed, retry " .. left .. "s") or "failed, retrying"
-            color = "red"
-        elseif STATUS_TEXT[status] then
-            text, color = STATUS_TEXT[status][1], STATUS_TEXT[status][2]
-        end
+        local look = STATUS_TEXT[status] or {"waiting", "white"}
         table.insert(rows, {
             name = entry.name,
             stock = formatAmount(lastAmount[entry.name]),
             want = formatAmount(entry.config[1]),
             batch = formatAmount(entry.config[2]),
-            status = text,
-            color = color,
+            status = look[1],
+            color = look[2],
+            problem = PROBLEM[status] == true,
         })
     end
-    local header = title or string.format("Level Maintainer   %s   CPUs free: %d/%d   Entries: %d",
-        currentTime(), math.max(freeCpus, 0), totalCpus, #entries)
-    display.update(rows, header, KEY_HELP)
+    table.sort(rows, function(a, b)
+        if a.problem ~= b.problem then
+            return a.problem
+        end
+        return a.name < b.name
+    end)
+    display.update(rows, title or headerParts(), KEY_HELP, KEY_HELP_SHORT)
 end
 
 local function sameEntry(a, b)
@@ -412,26 +437,43 @@ local function editFile(path)
     display.resume()
 end
 
+-- Key codes (OpenOS keyboard.keys; pageUp is only in its lazily loaded full table)
+local KEY_UP, KEY_DOWN, KEY_PAGE_UP, KEY_PAGE_DOWN = 0xC8, 0xD0, 0xC9, 0xD1
+
 -- Waits up to `timeout` seconds while listening for keys:
---   E edits config.lua, S edits settings.lua, R reloads, Q quits.
+--   E edits config.lua, S edits settings.lua, R reloads, Q quits,
+--   Page Up/Down and the Up/Down arrows page through the status table.
 -- Returns "edited" or "reload" when one of those keys was used, otherwise nil.
 local function idle(timeout)
     local deadline = computer.uptime() + timeout
     repeat
-        local name, _, char = event.pull(math.max(0, deadline - computer.uptime()), "key_down")
-        if name == "key_down" and char and char > 0 and char < 128 then
-            local key = string.char(char):lower()
-            if key == "e" then
-                editFile(CONFIG_PATH)
-                return "edited"
-            elseif key == "s" then
-                editFile(SETTINGS_PATH)
-                return "edited"
-            elseif key == "r" then
-                return "reload"
-            elseif key == "q" then
-                error("interrupted", 0) -- stops the same way as Ctrl+Alt+C
+        local wait = math.max(0, deadline - computer.uptime())
+        local countdown = nextCycleAt ~= nil and display.isActive()
+        if countdown then
+            wait = math.min(wait, 1) -- wake every second to update "Next cycle in"
+        end
+        local name, _, char, code = event.pull(wait, "key_down")
+        if name == "key_down" then
+            if code == KEY_PAGE_DOWN or code == KEY_DOWN then
+                display.changePage(1)
+            elseif code == KEY_PAGE_UP or code == KEY_UP then
+                display.changePage(-1)
+            elseif char and char > 0 and char < 128 then
+                local key = string.char(char):lower()
+                if key == "e" then
+                    editFile(CONFIG_PATH)
+                    return "edited"
+                elseif key == "s" then
+                    editFile(SETTINGS_PATH)
+                    return "edited"
+                elseif key == "r" then
+                    return "reload"
+                elseif key == "q" then
+                    error("interrupted", 0) -- stops the same way as Ctrl+Alt+C
+                end
             end
+        elseif countdown then
+            display.setHeader(headerParts())
         end
     until computer.uptime() >= deadline
     return nil
@@ -441,7 +483,7 @@ end
 -- reload check that finds a saved file, ends the wait early so the new config is
 -- used right away.
 local function waitForNextCycle()
-    local deadline = computer.uptime() + settings.sleep
+    local deadline = nextCycleAt or (computer.uptime() + settings.sleep)
     repeat
         local wake = deadline
         if (tonumber(settings.reloadCheck) or 0) > 0 then
@@ -491,9 +533,11 @@ local function run()
             end
         end
 
+        nextCycleAt = computer.uptime() + settings.sleep
         render()
         display.endBatch()
         waitForNextCycle()
+        nextCycleAt = nil
     end
 end
 
@@ -555,6 +599,7 @@ local function main()
             error(err, 0)
         end
         display.endBatch()
+        nextCycleAt = nil
         local delay = math.max(tonumber(settings.retryDelay) or 0, 5)
         logInfo("ERROR: " .. tostring(err))
         logInfo("Restarting in " .. delay .. "s...")

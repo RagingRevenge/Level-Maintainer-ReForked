@@ -36,9 +36,10 @@ settings.pollInterval = 1
 -- their threshold, waiting to retry, or waiting for a free CPU.
 settings.logSkips = true
 
--- Repeat skip messages every cycle. false = log each entry's status once, and
--- again only when it changes (e.g. "meets or exceeds threshold" appears once
--- after a craft instead of every cycle).
+-- Show everything that happens, every cycle, in the Recent panel of the status
+-- table (stocked, crafting, waiting for a CPU, retry waits, ...). false = each
+-- entry's status is logged once and again only when it changes. The scrolling
+-- log (display = "log") always logs each status once.
 settings.logRepeats = false
 
 -- Hours to add to UTC for log timestamps, e.g. 1 for CET, 2 for CEST,

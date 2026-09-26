@@ -52,7 +52,7 @@ Stop it by pressing Q, or holding Ctrl+Alt+C for a second. Crafts already sent t
 By default the screen shows a status table, redrawn every cycle:
 
 ```
-Level Maintainer   14:02:11   CPUs free: 2/8   Entries: 3
+Level Maintainer   14:02:11   CPUs free: 2/8   Entries: 3   Next cycle in 7s
 Name                          Stock     Want   Batch  Status
 Blank Pattern                   385      256     512  stocked
 Fluorescent Dye                   -        -    1024  crafting
@@ -63,8 +63,10 @@ E edit config  S edit settings  R reload  Q quit
 ```
 
 - **Stock** is shown for entries with a threshold (the maintainer only reads the stock when it has to compare it). Fluids are in mB.
-- **Status** is one of: `stocked`, `crafting`, `requested`, `waiting for CPU`, `failed, retry 45s`, `not craftable`, `error`, or `waiting` before the entry's first check.
-- With a color GPU the rows are colored by status. If there are more entries than rows, the last row says how many are hidden; a bigger screen shows more, and `settings.showRecent = false` gives the table the whole screen.
+- **Status** is one of: `stocked`, `crafting`, `requested`, `waiting for CPU`, `failed` (the Recent log says when it is retried), `not craftable`, `error`, or `waiting` before the entry's first check.
+- Rows that need attention (`failed`, `error`, `not craftable`) are listed first; the rest are alphabetical.
+- The header counts down to the next cycle.
+- With a color GPU the rows are colored by status. If there are more entries than fit, the table has pages: the header shows `Page 1/3`, and Page Up/Down or the Up/Down arrows switch pages. `settings.showRecent = false` gives the table the whole screen.
 
 Set `settings.display = "log"` for the plain scrolling log instead.
 
@@ -76,6 +78,7 @@ Keys work while the maintainer waits between cycles (and while it waits at start
 | S | Same for `settings.lua`. |
 | R | Reloads `config.lua` and `settings.lua` if they were saved since they were last read (e.g. edited from your PC). |
 | Q | Stops the maintainer. |
+| Page Up/Down, Up/Down arrows | Switch pages of the status table when it doesn't fit on the screen. |
 
 Each cycle starts one entry further down the list, so when crafting CPUs are scarce every entry gets its turn at a free CPU.
 
@@ -154,7 +157,7 @@ Timing and behaviour live in `settings.lua` (anything missing falls back to a de
 | `logSkips` | `true` | Log entries skipped for being in progress, stocked, waiting to retry or waiting for a CPU. |
 | `display` | `"table"` | `"table"` shows the status table described under [Screen and keys](#screen-and-keys); `"log"` shows a scrolling log. |
 | `showRecent` | `true` | Show the recent log lines below the status table. `false` gives the whole screen to the table. |
-| `logRepeats` | `false` | Repeat those messages every cycle. `false` logs each entry's status once and again only when it changes. |
+| `logRepeats` | `false` | Show everything that happens, every cycle, in the Recent panel of the status table. `false` logs each entry's status once and again only when it changes. The scrolling log (`display = "log"`) always logs each status once. |
 | `reloadCheck` | `0` | Live reload: seconds between checks for a saved `config.lua` or `settings.lua` while running, e.g. `30`. Only useful if you can edit the files outside the game. `0` = off. |
 | `utcOffset` | `0` | Hours added to UTC for log timestamps (e.g. `1` for CET, `2` for CEST). Timestamps use the server's real clock, not in-game time. |
 
