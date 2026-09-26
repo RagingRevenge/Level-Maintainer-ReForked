@@ -38,6 +38,11 @@ local function submit(craftable, count)
     return not failed, reason
 end
 
+-- getStack() of a fluid craftable has "amount" and no "damage"; item stacks always have "damage"
+local function isFluidStack(stack)
+    return stack ~= nil and stack.damage == nil and stack.amount ~= nil
+end
+
 -- Function to get or cache a specific craftable item
 local function getCraftableForItem(itemName)
     local currentTime = computer.uptime() -- real seconds; os.time() is in-game time (72x faster)
@@ -71,6 +76,10 @@ function AE2.requestItem(name, threshold, count, fluidName)
 
     if craftable then
         local item = (craftable.getStack or craftable.getItemStack)(craftable)
+        -- A fluid listed under cfg.items: check its stock as a fluid, not as an item
+        if isFluidStack(item) then
+            return AE2.requestFluid(name, threshold, count)
+        end
         if threshold ~= nil then
             local itemInSystem = nil
             
@@ -120,13 +129,17 @@ function AE2.requestFluid(name, threshold, count, fluidName)
                 local cached = fluidNameCache[name]
                 if cached == nil then
                     local stack = (craftable.getStack or craftable.getItemStack)(craftable)
-                    cached = (stack and stack.name) or false
+                    cached = (isFluidStack(stack) and stack.name) or false
                     fluidNameCache[name] = cached
                 end
-                if cached then fluidName = cached end
+                -- An item listed under cfg.fluids: check its stock as an item
+                if not cached then
+                    return AE2.requestItem(name, threshold, count)
+                end
+                fluidName = cached
             end
 
-            if fluidName then
+            if fluidName and ME.getFluidInNetwork then
                 local fluidInSystem = ME.getFluidInNetwork(fluidName)
                 local amount = fluidInSystem and (fluidInSystem.size or fluidInSystem.amount)
                 if amount and amount >= threshold then
