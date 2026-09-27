@@ -63,6 +63,10 @@ settings.showRecent = true
 --   "fixed"   - keeps the resolution, one table.
 settings.layout = "fit"
 
+-- How the header counts crafting CPUs: "free" = idle CPUs ("CPUs free: 9/11"),
+-- "busy" = CPUs running a job ("CPUs busy: 2/11").
+settings.cpuDisplay = "free"
+
 -- Live reload: how often, in seconds, to check whether config.lua or settings.lua
 -- was saved while the maintainer runs, and reload them. Only useful if you can
 -- edit the files outside the game (singleplayer, or a server on your own PC),

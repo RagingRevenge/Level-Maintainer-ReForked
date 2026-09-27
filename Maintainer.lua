@@ -50,6 +50,7 @@ local function buildSettings(userSettings, cfg)
         display = "table",
         showRecent = true,
         layout = "fit",
+        cpuDisplay = "free",
     }
     for k, v in pairs(userSettings or {}) do
         s[k] = v
@@ -246,12 +247,21 @@ local PROBLEM = {retry = true, missing = true, error = true}
 
 local nextCycleAt = nil -- uptime when the wait for the next cycle ends (nil while a cycle runs)
 
+-- "CPUs free: 9/11", or "CPUs busy: 2/11" with settings.cpuDisplay = "busy"
+local function cpuText()
+    local free = math.max(freeCpus, 0)
+    if settings.cpuDisplay == "busy" then
+        return string.format("CPUs busy: %d/%d", math.max(totalCpus - free, 0), totalCpus)
+    end
+    return string.format("CPUs free: %d/%d", free, totalCpus)
+end
+
 -- Header parts; on a narrow screen the ones with the lowest `keep` are left out first
 local function headerParts()
     local parts = {
         {text = "Level Maintainer", keep = 10},
         {text = currentTime(), keep = 40},
-        {text = string.format("CPUs free: %d/%d", math.max(freeCpus, 0), totalCpus), keep = 50},
+        {text = cpuText(), keep = 50},
         {text = "Entries: " .. #entries, keep = 30},
     }
     if nextCycleAt then

@@ -158,6 +158,7 @@ Timing and behaviour live in `settings.lua` (anything missing falls back to a de
 | `logSkips` | `true` | Log entries skipped for being in progress, stocked, waiting to retry or waiting for a CPU. |
 | `display` | `"table"` | `"table"` shows the status table described under [Screen and keys](#screen-and-keys); `"log"` shows a scrolling log. |
 | `showRecent` | `true` | Show the recent log lines below the status table. `false` gives the whole screen to the table. |
+| `cpuDisplay` | `"free"` | How the header counts crafting CPUs: `"free"` shows idle CPUs (`CPUs free: 9/11`), `"busy"` shows CPUs running a job (`CPUs busy: 2/11`). |
 | `layout` | `"fit"` | How the status table uses the screen. `"fit"` changes the screen resolution so the rows fill the screen with the largest text that fits (matched to the screen's shape; the old resolution comes back when the maintainer stops). `"columns"` keeps the resolution and puts the rows in side-by-side tables when the screen is wide enough. `"fixed"` keeps the resolution with one table. |
 | `logRepeats` | `false` | Show everything that happens, every cycle, in the Recent panel of the status table. `false` logs each entry's status once and again only when it changes. The scrolling log (`display = "log"`) always logs each status once. |
 | `reloadCheck` | `0` | Live reload: seconds between checks for a saved `config.lua` or `settings.lua` while running, e.g. `30`. Only useful if you can edit the files outside the game. `0` = off. |
