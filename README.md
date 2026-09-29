@@ -4,7 +4,12 @@ Lets you passive lines easily, without lag and randomness of AE2 maintainer.
 Also supports having a threshold.
 
 Fork of [Echoloquate/Level-Maintainer](https://github.com/Echoloquate/Level-Maintainer) with fixes for the lookup cache, NBT item and fluid thresholds and crash recovery, a `settings.lua` for timing, retry and CPU options, and optional auto-start.
-Also adds some personal additions that I would have liked to see from the original!
+
+## New in this fork
+
+- **Cancel a running craft (`X`).** Lists every maintained item currently crafting and cancels the one you pick, several of them, or all of them at once -- handy when you need to change a machine layout without waiting for AE2 to finish on its own. Only cancels crafts this maintainer started; it never touches a craft you queued by hand.
+- **Percentage column.** The status table shows how full each item is compared to its threshold (e.g. `62%`), so you can tell at a glance how close something is to being fully stocked.
+- **Separate cancel retry timer (`cancelDelay`).** After you cancel a craft, the maintainer waits this many seconds before trying that entry again. Tracked separately from `retryDelay`, so changing one never affects the other.
 
 # Setup
 
@@ -30,7 +35,7 @@ The maintainer runs on OpenOS, so install it to the hard drive first:
 Download it (run the same command again later to update)
 
 ```bash
-wget -f https://raw.githubusercontent.com/RagingRevenge/Level-Maintainer-ReForked/master/installer.lua && installer
+wget -f https://raw.githubusercontent.com/RagingRevenge/Level-Maintainer-ReForked/Adding-New-Features-PT1-Test/installer.lua && installer
 ```
 
 The installer replaces the scripts but keeps an existing `config.lua` and `settings.lua`. It then asks:
@@ -53,19 +58,20 @@ Stop it by pressing Q, or holding Ctrl+Alt+C for a second. Crafts already sent t
 By default the screen shows a status table, redrawn every cycle:
 
 ```
-Level Maintainer   14:02:11   CPUs free: 2/8   Entries: 3   Next cycle in 7s
-Name                          Stock     Want   Batch  Status
-Blank Pattern                   385      256     512  stocked
-Fluorescent Dye                   -        -    1024  crafting
-Phthalic Acid                11.97M   10.00M   3.00M  stocked
+Level Maintainer ReForked!   14:02:11   CPUs free: 2/8   Entries: 3   Next cycle in 7s
+Name                          Stock     Want   Batch    %  Status
+Blank Pattern                   385      256     512  150%  stocked
+Fluorescent Dye                   -        -    1024    -  crafting
+Phthalic Acid                11.97M   10.00M   3.00M  119%  stocked
 -- Recent --------------------------------------------------
 [14:01:51] Requested Fluorescent Dye x 1024
-E edit config  S edit settings  R reload  Q quit
+E edit config  S edit settings  R reload  X cancel  Q quit
 ```
 
 - **Stock** is shown for entries with a threshold (the maintainer only reads the stock when it has to compare it). Fluids are in mB. The stock isn't read while an entry is crafting, waiting to retry or waiting for a CPU; its last value is then shown in gray.
-- **Status** is one of: `stocked`, `crafting`, `requested`, `waiting for CPU`, `failed` (the Recent log says when it is retried), `not craftable`, `error`, or `waiting` before the entry's first check.
-- Rows that need attention (`failed`, `error`, `not craftable`) are listed first; the rest are alphabetical.
+- **%** shows how full the entry is compared to its threshold (e.g. `62%`), or `-` for an entry with no threshold set.
+- **Status** is one of: `stocked`, `crafting`, `requested`, `waiting for CPU`, `failed` (the Recent log says when it is retried), `canceled` (the Recent log says how long until it is retried), `not craftable`, `error`, or `waiting` before the entry's first check.
+- Rows that need attention (`failed`, `error`, `not craftable`, `canceled`) are listed first; the rest are alphabetical.
 - The header counts down to the next cycle.
 - By default (`settings.layout = "fit"`) the maintainer picks the screen resolution itself, so the table fills the screen with text as large as possible; with few entries the text is big, with many it gets smaller. `"columns"` instead keeps the resolution and splits the rows into side-by-side tables on wide screens.
 - With a color GPU the rows are colored by status. If there are more entries than fit, the table has pages: the header shows `Page 1/3`, and Page Up/Down or the Up/Down arrows switch pages. `settings.showRecent = false` gives the table the whole screen.
@@ -79,6 +85,7 @@ Keys work while the maintainer waits between cycles (and while it waits at start
 | E | Opens `config.lua` in the editor. Save with Ctrl+S, close with Ctrl+W; the maintainer reloads it and starts a new cycle. |
 | S | Same for `settings.lua`. |
 | R | Reloads `config.lua` and `settings.lua` if they were saved since they were last read (e.g. edited from your PC). |
+| X | Lists every maintained item currently crafting and cancels the one you pick, several of them, or all of them. Only lists items from `config.lua` -- a craft you started by hand elsewhere on the network is never shown or touched. |
 | Q | Stops the maintainer. |
 | Page Up/Down, Up/Down arrows | Switch pages of the status table when it doesn't fit on the screen. |
 
@@ -152,6 +159,7 @@ Timing and behaviour live in `settings.lua` (anything missing falls back to a de
 |---|---|---|
 | `sleep` | `10` | Seconds between cycles. |
 | `retryDelay` | `60` | Seconds to wait before recalculating an entry whose request failed (missing ingredients, no suitable CPU). `0` retries every cycle. |
+| `cancelDelay` | `60` | Seconds to wait before recalculating an entry after you cancel it with `X`. Tracked separately from `retryDelay`, so changing one never affects the other. `0` retries next cycle. |
 | `requireFreeCpu` | `true` | Only start a calculation when a crafting CPU (or `cpuName`) is idle. |
 | `cpuName` | `nil` | Send every request to this named crafting CPU. `nil` lets AE2 pick. |
 | `cacheDuration` | `600` | Seconds craftable lookups are cached. New patterns are picked up after at most this long. |
