@@ -3,7 +3,7 @@
 Lets you passive lines easily, without lag and randomness of AE2 maintainer.
 Also supports having a threshold.
 
-Fork of [Echoloquate/Level-Maintainer](https://github.com/Echoloquate/Level-Maintainer) with fixes for the lookup cache, NBT item and fluid thresholds and crash recovery, a `settings.lua` for timing, retry and CPU options, and optional auto-start.
+Fork of [Echoloquate/Level-Maintainer](https://github.com/Echoloquate/Level-Maintainer) also [Willshaper/Level-Maintainer] (https://github.com/Willshaper/Level-Maintainer) with fixes for the lookup cache, NBT item and fluid thresholds and crash recovery, a `settings.lua` for timing, retry and CPU options, and optional auto-start.
 
 ## New in this fork
 
