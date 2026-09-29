@@ -2,6 +2,7 @@ local computer = require("computer")
 local event = require("event")
 local filesystem = require("filesystem")
 local shell = require("shell")
+local term = require("term")
 local ae2 = require("src.AE2")
 local display = require("src.Display")
 require("src.Utility") -- defines logInfo, setLogHandler, setTimeOffset and currentTime
@@ -15,8 +16,8 @@ end
 local CONFIG_PATH = findFile("config")
 local SETTINGS_PATH = findFile("settings")
 local STARTUP_CHECK = 2 -- seconds between checks while waiting for a broken config.lua to be fixed
-local KEY_HELP = "E edit config  S edit settings  R reload  Q quit"
-local KEY_HELP_SHORT = "E config  S settings  R reload  Q quit"
+local KEY_HELP = "E edit config  S edit settings  R reload  X cancel  Q quit"
+local KEY_HELP_SHORT = "E config  S settings  R reload  X cancel  Q quit"
 
 -- Runs a Lua file that returns a table. Returns the table, or nil and an error message.
 local function loadTable(path)
@@ -39,6 +40,7 @@ local function buildSettings(userSettings, cfg)
     local s = {
         sleep = (cfg and cfg.sleep) or 10,
         retryDelay = 60,
+        cancelDelay = 60, -- separate from retryDelay: how long a canceled entry is held before retrying
         requireFreeCpu = true,
         cpuName = nil,
         cacheDuration = 600,
@@ -149,6 +151,7 @@ local function skip(name, status, message)
 end
 
 local retryAt = {} -- name -> uptime before which a failed entry is not calculated again
+local cancelUntil = {} -- name -> uptime before which a canceled entry is not calculated again
 local lastConfig = nil -- config in use, to tell which entries changed on reload
 local warnedCpuName = false
 local turn = 0 -- which entry goes first this cycle; moves on by one every cycle
@@ -169,7 +172,9 @@ end
 
 local function maintain(name, config, request)
     local now = computer.uptime()
-    if itemsCrafting[name] == true then
+    if cancelUntil[name] and now < cancelUntil[name] then
+        skip(name, "canceled", name .. " was canceled, retrying in " .. math.ceil(cancelUntil[name] - now) .. "s")
+    elseif itemsCrafting[name] == true then
         skip(name, "crafting", name .. " is already being crafted, skipping...")
     elseif retryAt[name] and now < retryAt[name] then
         skip(name, "retry", name .. " failed recently, retrying in " .. math.ceil(retryAt[name] - now) .. "s")
@@ -240,10 +245,11 @@ local STATUS_TEXT = {
     retry = {"failed", "red"}, -- the retry time is in the log line
     missing = {"not craftable", "red"},
     error = {"error", "red"},
+    canceled = {"canceled", "orange"}, -- the wait to retry is in the log line
 }
 
 -- Shown on top of the table, so they are on the first page
-local PROBLEM = {retry = true, missing = true, error = true}
+local PROBLEM = {retry = true, missing = true, error = true, canceled = true}
 
 local nextCycleAt = nil -- uptime when the wait for the next cycle ends (nil while a cycle runs)
 
@@ -259,7 +265,7 @@ end
 -- Header parts; on a narrow screen the ones with the lowest `keep` are left out first
 local function headerParts()
     local parts = {
-        {text = "Level Maintainer", keep = 10},
+        {text = "Level Maintainer ReForked!", keep = 10},
         {text = currentTime(), keep = 40},
         {text = cpuText(), keep = 50},
         {text = "Entries: " .. #entries, keep = 30},
@@ -268,6 +274,15 @@ local function headerParts()
         table.insert(parts, {text = "Next cycle in " .. math.max(0, math.ceil(nextCycleAt - computer.uptime())) .. "s", keep = 90})
     end
     return parts
+end
+
+-- Percentage of threshold currently in stock, or "-" with no threshold or no reading yet
+local function percentText(name, threshold)
+    local have = lastAmount[name]
+    if type(have) ~= "number" or type(threshold) ~= "number" or threshold <= 0 then
+        return "-"
+    end
+    return math.min(math.floor(have / threshold * 100), 999) .. "%"
 end
 
 -- Refreshes the status table (does nothing in log mode)
@@ -286,6 +301,7 @@ local function render(title)
             stockFrozen = lastAmount[entry.name] ~= nil and amountCycle[entry.name] ~= cycleNumber,
             want = formatAmount(entry.config[1]),
             batch = formatAmount(entry.config[2]),
+            pct = percentText(entry.name, entry.config[1]),
             status = look[1],
             color = look[2],
             problem = PROBLEM[status] == true,
@@ -364,6 +380,7 @@ local function describeChanges(old, new)
                 currentStatus[name] = nil
                 lastLogged[name] = nil
                 retryAt[name] = nil
+                cancelUntil[name] = nil
             end
         end
         for name in pairs(oldBlock or {}) do
@@ -454,13 +471,87 @@ local function editFile(path)
     display.resume()
 end
 
+-- Live (not cached) list of currently-crafting jobs whose item is in config.lua,
+-- sorted by name. Only maintained items can be canceled -- never someone else's
+-- manual craft on the same network.
+local function maintainedRunningJobs()
+    local wanted = {}
+    for _, entry in ipairs(entries) do
+        wanted[entry.name] = true
+    end
+    local jobs = {}
+    for _, job in ipairs(ae2.runningJobs()) do
+        if wanted[job.label] then
+            table.insert(jobs, job)
+        end
+    end
+    table.sort(jobs, function(a, b) return a.label < b.label end)
+    return jobs
+end
+
+local function cancelJob(job)
+    if ae2.cancelJob(job) then
+        cancelUntil[job.label] = computer.uptime() + (tonumber(settings.cancelDelay) or 60)
+        currentStatus[job.label] = "canceled"
+        lastLogged[job.label] = "canceled"
+        logInfo("Canceled crafting of " .. job.label)
+        return true
+    end
+    logInfo("ERROR: could not cancel " .. job.label)
+    return false
+end
+
+-- X: lists maintained items currently crafting and cancels the one picked (or all).
+-- The status table is paused while this is open, same as editFile.
+local function cancelPrompt()
+    display.suspend()
+    term.clear()
+    term.setCursor(1, 1)
+    local jobs = maintainedRunningJobs()
+    io.write("\n")
+    if #jobs == 0 then
+        io.write("No maintained items are currently crafting.")
+        os.sleep(1.5)
+    else
+        local shown = math.min(#jobs, 9)
+        for i = 1, shown do
+            io.write(i .. "  " .. jobs[i].label .. "\n")
+        end
+        if #jobs > shown then
+            io.write("+" .. (#jobs - shown) .. " more (A cancels all)\n")
+        end
+        io.write("Press 1-" .. shown .. " to cancel, A for all, any other key to go back.")
+        local _, _, char = event.pull("key_down")
+        local key = (char and char > 0 and char < 128) and string.char(char):lower() or ""
+        local canceled = 0
+        if key == "a" then
+            for _, job in ipairs(jobs) do
+                if cancelJob(job) then
+                    canceled = canceled + 1
+                end
+            end
+        else
+            local n = tonumber(key)
+            if n and n >= 1 and n <= shown and cancelJob(jobs[n]) then
+                canceled = 1
+            end
+        end
+        if canceled > 0 then
+            io.write("\n" .. canceled .. " craft(s) canceled.")
+            os.sleep(1.5)
+        end
+    end
+    display.resume()
+end
+
 -- Key codes (OpenOS keyboard.keys; pageUp is only in its lazily loaded full table)
 local KEY_UP, KEY_DOWN, KEY_PAGE_UP, KEY_PAGE_DOWN = 0xC8, 0xD0, 0xC9, 0xD1
 
 -- Waits up to `timeout` seconds while listening for keys:
---   E edits config.lua, S edits settings.lua, R reloads, Q quits,
---   Page Up/Down and the Up/Down arrows page through the status table.
--- Returns "edited" or "reload" when one of those keys was used, otherwise nil.
+--   E edits config.lua, S edits settings.lua, R reloads, X cancels a running
+--   maintained craft, Q quits, Page Up/Down and the Up/Down arrows page through
+--   the status table.
+-- Returns "edited", "reload" or "canceled" when one of those keys was used, otherwise nil.
 local function idle(timeout)
     local deadline = computer.uptime() + timeout
     repeat
@@ -483,6 +574,9 @@ local function idle(timeout)
                 elseif key == "s" then
                     editFile(SETTINGS_PATH)
                     return "edited"
+                elseif key == "x" then
+                    cancelPrompt()
+                    return "canceled"
                 elseif key == "r" then
                     return "reload"
                 elseif key == "q" then
@@ -506,8 +600,9 @@ local function waitForNextCycle()
         if (tonumber(settings.reloadCheck) or 0) > 0 then
             wake = math.min(deadline, nextReloadCheck)
         end
-        if idle(math.max(0, wake - computer.uptime())) then
-            if not reloadIfChanged() then
+        local action = idle(math.max(0, wake - computer.uptime()))
+        if action then
+            if action ~= "canceled" and not reloadIfChanged() then
                 logInfo("config.lua and settings.lua are unchanged.")
             end
             return

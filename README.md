@@ -4,6 +4,7 @@ Lets you passive lines easily, without lag and randomness of AE2 maintainer.
 Also supports having a threshold.
 
 Fork of [Echoloquate/Level-Maintainer](https://github.com/Echoloquate/Level-Maintainer) with fixes for the lookup cache, NBT item and fluid thresholds and crash recovery, a `settings.lua` for timing, retry and CPU options, and optional auto-start.
+Also adds some personal additions that I would have liked to see from the original!
 
 # Setup
 
@@ -29,7 +30,7 @@ The maintainer runs on OpenOS, so install it to the hard drive first:
 Download it (run the same command again later to update)
 
 ```bash
-wget -f https://raw.githubusercontent.com/Willshaper/Level-Maintainer/master/installer.lua && installer
+wget -f https://raw.githubusercontent.com/RagingRevenge/Level-Maintainer-ReForked/master/installer.lua && installer
 ```
 
 The installer replaces the scripts but keeps an existing `config.lua` and `settings.lua`. It then asks:

@@ -213,4 +213,32 @@ function AE2.clearCache()
     cacheTimestamp = 0
 end
 
+-- A live scan (not cached) of every crafting CPU that is currently busy.
+-- Returns a list of {label = <item label>, cpu = <cpu proxy>} for each one.
+function AE2.runningJobs()
+    local jobs = {}
+    if not ME then
+        return jobs
+    end
+    local ok, cpus = pcall(ME.getCpus)
+    if not ok then
+        return jobs
+    end
+    for _, v in pairs(cpus) do
+        if v.busy then
+            local ok2, finaloutput = pcall(function() return v.cpu.finalOutput() end)
+            if ok2 and finaloutput ~= nil then
+                table.insert(jobs, {label = finaloutput.label, cpu = v.cpu})
+            end
+        end
+    end
+    return jobs
+end
+
+-- Cancels the CPU running a job from AE2.runningJobs(). Returns true if canceled.
+function AE2.cancelJob(job)
+    local ok, result = pcall(function() return job.cpu.cancel() end)
+    return ok and result == true
+end
+
 return AE2
