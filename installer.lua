@@ -5,7 +5,7 @@ local scripts = {"src/AE2.lua", "src/Display.lua", "src/Utility.lua", "Maintaine
 
 local repo = "https://raw.githubusercontent.com/RagingRevenge/Level-Maintainer-ReForked/";
 local api = "https://api.github.com/repos/RagingRevenge/Level-Maintainer-ReForked/commits/";
-local branch = "Adding-New-Features-PT1-Test"
+local branch = "master"
 local dir = shell.getWorkingDirectory()
 
 -- GitHub caches each file on a branch for up to 5 minutes, so right after an update
