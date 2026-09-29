@@ -3,9 +3,9 @@ local filesystem = require("filesystem")
 local component = require("component")
 local scripts = {"src/AE2.lua", "src/Display.lua", "src/Utility.lua", "Maintainer.lua"}
 
-local repo = "https://raw.githubusercontent.com/Willshaper/Level-Maintainer/";
-local api = "https://api.github.com/repos/Willshaper/Level-Maintainer/commits/";
-local branch = "master"
+local repo = "https://raw.githubusercontent.com/RagingRevenge/Level-Maintainer-ReForked/";
+local api = "https://api.github.com/repos/RagingRevenge/Level-Maintainer-ReForked/commits/";
+local branch = "Adding-New-Features-PT1-Test"
 local dir = shell.getWorkingDirectory()
 
 -- GitHub caches each file on a branch for up to 5 minutes, so right after an update
