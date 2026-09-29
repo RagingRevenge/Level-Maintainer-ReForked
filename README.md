@@ -35,7 +35,7 @@ The maintainer runs on OpenOS, so install it to the hard drive first:
 Download it (run the same command again later to update)
 
 ```bash
-wget -f https://raw.githubusercontent.com/RagingRevenge/Level-Maintainer-ReForked/Adding-New-Features-PT1-Test/installer.lua && installer
+wget -f https://raw.githubusercontent.com/RagingRevenge/Level-Maintainer-ReForked/installer.lua && installer
 ```
 
 The installer replaces the scripts but keeps an existing `config.lua` and `settings.lua`. It then asks:
