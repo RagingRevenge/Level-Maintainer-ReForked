@@ -15,6 +15,10 @@ settings.sleep = 10
 -- error (at least 5 seconds).
 settings.retryDelay = 60
 
+-- After you cancel a craft with X, wait this many seconds before the maintainer
+-- tries that entry again. Separate from retryDelay above. 0 = retry next cycle.
+settings.cancelDelay = 60
+
 -- Only start a calculation when a crafting CPU is idle (or the CPU named in
 -- cpuName, if set). AE2 otherwise calculates the whole craft and then fails
 -- to submit it.

@@ -43,8 +43,8 @@ local STATUS_WIDTH = 15 -- fits "waiting for CPU"
 local MIN_NAME_WIDTH = 16
 local MAX_NAME_WIDTH = 50 -- so the numbers stay next to the names on wide screens
 local NUMBER_COLUMNS = {{title = "Stock", key = "stock", width = 8}, {title = "Want", key = "want", width = 8},
-    {title = "Batch", key = "batch", width = 7}}
-local ALL_COLUMNS_WIDTH = STATUS_WIDTH + 2 + 9 + 9 + 8 -- everything except the name
+    {title = "Batch", key = "batch", width = 7}, {title = "%", key = "pct", width = 4}}
+local ALL_COLUMNS_WIDTH = STATUS_WIDTH + 2 + 9 + 9 + 8 + 5 -- everything except the name
 local MIN_TABLE_WIDTH = 20 + ALL_COLUMNS_WIDTH -- narrowest side-by-side table ("columns")
 local MIN_SCREEN_WIDTH = 50 -- the short key help and a compact header fit
 local TABLE_GAP = " | "
@@ -498,8 +498,8 @@ function Display.endBatch()
     drawAll()
 end
 
--- rows: list of {name, stock, want, batch, status, color}; header: see Display.setHeader;
--- footer / footerShort: key help, the short one for narrow screens
+-- rows: list of {name, stock, stockFrozen, want, batch, pct, status, color, problem};
+-- header: see Display.setHeader; footer / footerShort: key help, the short one for narrow screens
 function Display.update(newRows, newHeader, newFooter, newFooterShort)
     rows = newRows
     header = headerParts(newHeader)
